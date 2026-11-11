@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PORTOEX · Painel Situacional de Cargas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<style>
+:root{
+  --navy:#1A3A6E; --navy2:#12294f; --orange:#E8611A; --bg:#eef1f6; --card:#fff; --ink:#1b2333; --soft:#5b667a; --line:#dde3ec;
+  --ok:#1f9d55; --okbg:#e3f6ea; --warn:#c98a00; --warnbg:#fff4d6; --bad:#d23b3b; --badbg:#fde6e6; --info:#2a6fdb; --infobg:#e5efff;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+h1,h2,h3,.cond{font-family:'Barlow Condensed',sans-serif;letter-spacing:.3px}
+button{font-family:inherit;cursor:pointer}
+.hidden{display:none!important}
+
+/* Header */
+header{background:var(--navy);color:#fff;padding:10px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.brand{display:flex;align-items:baseline;gap:8px}
+.brand b{font-family:'Barlow Condensed';font-size:26px;font-weight:700}
+.brand b span{color:var(--orange)}
+.brand small{font-family:'Barlow Condensed';font-size:17px;opacity:.85}
+.datenav{display:flex;align-items:center;gap:6px;margin-left:auto}
+.datenav button,.hbtn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:8px;padding:6px 10px;font-weight:600}
+.datenav button:hover,.hbtn:hover{background:rgba(255,255,255,.22)}
+.datenav .day{font-family:'Barlow Condensed';font-size:22px;font-weight:700;min-width:150px;text-align:center}
+.datenav .day small{display:block;font-size:12px;font-family:Inter;font-weight:500;opacity:.8;margin-top:-2px}
+.upd{font-size:12px;opacity:.85;text-align:right;line-height:1.3}
+.search{background:#fff;border:0;border-radius:8px;padding:8px 10px;width:220px;font-size:13px}
+
+nav.tabs{display:flex;gap:4px;padding:10px 18px 0;background:var(--navy2);overflow-x:auto}
+nav.tabs button{background:transparent;border:0;color:#c9d4e8;padding:10px 16px;font-family:'Barlow Condensed';font-size:18px;font-weight:600;border-radius:10px 10px 0 0;white-space:nowrap}
+nav.tabs button.on{background:var(--bg);color:var(--navy)}
+nav.tabs .badge{background:var(--bad);color:#fff;border-radius:10px;padding:0 7px;font-size:13px;margin-left:4px;font-family:Inter}
+main{padding:16px 18px 40px}
+
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:var(--card);border-radius:12px;padding:12px 14px;border-left:5px solid var(--navy);box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer}
+.kpi.o{border-color:var(--orange)} .kpi.r{border-color:var(--bad)} .kpi.g{border-color:var(--ok)} .kpi.b{border-color:var(--info)}
+.kpi .l{font-size:12px;color:var(--soft);text-transform:uppercase;font-weight:600;letter-spacing:.4px}
+.kpi .v{font-family:'Barlow Condensed';font-size:34px;font-weight:700;line-height:1.1}
+.kpi .s{font-size:12px;color:var(--soft)}
+.bar{height:6px;background:#e7ebf2;border-radius:4px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--ok)}
+
+/* Vehicle cards */
+.sec-title{display:flex;align-items:center;gap:10px;margin:18px 0 10px}
+.sec-title h2{margin:0;font-size:24px;color:var(--navy)}
+.sec-title .hint{color:var(--soft);font-size:12px}
+.vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+.vcard{background:var(--card);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);overflow:hidden;display:flex;flex-direction:column}
+.vhead{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+.plate{background:#111;color:#fff;font-family:'Barlow Condensed';font-weight:700;font-size:20px;border-radius:6px;padding:2px 8px;letter-spacing:1px;white-space:nowrap}
+.plate.sm{font-size:15px;padding:1px 6px}
+.vhead .who{flex:1;min-width:0}
+.vhead .who b{display:block;font-size:15px}
+.vhead .who small{color:var(--soft);font-size:12px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{display:inline-block;border-radius:20px;padding:2px 9px;font-size:12px;font-weight:600;white-space:nowrap}
+.p-ok{background:var(--okbg);color:var(--ok)} .p-warn{background:var(--warnbg);color:var(--warn)} .p-bad{background:var(--badbg);color:var(--bad)} .p-info{background:var(--infobg);color:var(--info)} .p-gray{background:#eceff4;color:var(--soft)}
+.vbody{padding:10px 12px;display:flex;flex-direction:column;gap:7px;font-size:13px}
+.vrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.vrow .lbl{color:var(--soft);font-size:12px;min-width:70px}
+.chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:#f7f9fc;border-radius:8px;padding:3px 7px;font-size:12px;cursor:pointer}
+.chip:hover{border-color:var(--navy)}
+.chip.bad{border-color:#f3b3b3;background:var(--badbg);color:var(--bad)}
+.chip.warn{border-color:#f0d98a;background:var(--warnbg);color:#8a5d00}
+.conf{font-size:12px;color:var(--soft)}
+.conf b{color:var(--ink)}
+
+/* Tables */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.fbtn{border:1px solid var(--line);background:#fff;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:600;color:var(--soft)}
+.fbtn.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.tbl-wrap{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{background:#f3f5f9;color:var(--soft);text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;white-space:nowrap}
+td{padding:7px 10px;border-top:1px solid var(--line);vertical-align:top}
+tr:hover td{background:#fafbfd}
+td.nf{font-weight:700;white-space:nowrap;cursor:pointer;color:var(--navy)}
+td.nf:hover{text-decoration:underline}
+.muted{color:var(--soft)}
+.small{font-size:12px}
+.grp td{background:#eef2f8!important;font-family:'Barlow Condensed';font-size:17px;font-weight:700;color:var(--navy)}
+
+/* Alerts */
+.alert{background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:10px;border-left:6px solid var(--warn);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.alert.high{border-color:var(--bad)} .alert.info{border-color:var(--info)}
+.alert h4{margin:0 0 4px;font-family:'Barlow Condensed';font-size:19px}
+.alert .det{font-size:13px;color:#33405a;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.agroup h3{font-size:21px;color:var(--navy);margin:20px 0 8px;display:flex;align-items:center;gap:8px}
+.empty{color:var(--soft);padding:22px;text-align:center;background:#fff;border-radius:12px}
+
+/* Modal */
+.modal-bg{position:fixed;inset:0;background:rgba(10,20,40,.55);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto}
+.modal{background:#fff;border-radius:14px;max-width:820px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.modal h2{margin:0 0 10px;color:var(--navy);font-size:26px}
+.modal .close{float:right;background:#eee;border:0;border-radius:8px;padding:4px 10px;font-size:16px}
+.tl{border-left:3px solid var(--line);margin-left:8px;padding-left:16px}
+.tl .ev{position:relative;margin-bottom:12px}
+.tl .ev:before{content:'';position:absolute;left:-23px;top:4px;width:11px;height:11px;border-radius:50%;background:var(--navy)}
+.tl .ev.col:before{background:var(--info)} .tl .ev.sai:before{background:var(--orange)} .tl .ev.inv:before{background:var(--warn)} .tl .ev.conf:before{background:var(--ok)}
+.tl .ev b{font-size:14px}
+.tl .ev div{font-size:12px;color:var(--soft)}
+label.f{display:block;font-size:12px;font-weight:600;color:var(--soft);margin:12px 0 4px}
+input.i,textarea.i,select.i{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:14px}
+.btn{background:var(--navy);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:600}
+.btn.o{background:var(--orange)} .btn.g{background:#e9edf3;color:var(--ink)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* Login */
+#login{position:fixed;inset:0;background:linear-gradient(135deg,var(--navy),var(--navy2));display:flex;align-items:center;justify-content:center;z-index:60}
+#login .box{background:#fff;border-radius:16px;padding:28px;width:340px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+#login h1{margin:0;color:var(--navy);font-size:32px}
+#login h1 span{color:var(--orange)}
+#login p{color:var(--soft);font-size:13px;margin:4px 0 14px}
+#login .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:8px}
+
+#loading{position:fixed;bottom:16px;right:16px;background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;z-index:40;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.srcline{font-size:12px;color:var(--soft);margin-top:24px;border-top:1px solid var(--line);padding-top:10px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;background:#bbb}
+.dot.on{background:#3ddc84} .dot.off{background:#ff6b6b}
+/* D+1 */
+.d1 table{font-size:13px}
+.d1 th.ent{background:#F39A2E;color:#fff;text-align:center} .d1 th.col{background:#3E7D2A;color:#fff;text-align:center}
+.d1 th.ent2{background:#ffe3c4;color:#7a4300} .d1 th.col2{background:#dcefd3;color:#2c5a1d} .d1 th.armh{background:var(--navy);color:#fff;text-align:center}
+.d1 td.n{text-align:right;white-space:nowrap} .d1 td.msg{font-weight:600;text-align:center;font-size:12px;min-width:180px;max-width:260px}
+.d1 td.prog{text-align:center;font-weight:700;white-space:nowrap}
+.d1 tr.vrow2{cursor:pointer} .d1 tr.vrow2:hover td{background:#f4f7fc}
+.d1 tr.tot td{background:#f3f5f9;font-weight:700}
+.arm{display:flex;flex-direction:column;gap:3px;min-width:170px}
+.armbar{display:flex;height:9px;border-radius:5px;overflow:hidden;background:#e7ebf2}
+.armbar i{display:block;height:100%}
+.c-ok{background:var(--ok)} .c-tr{background:#e2a400} .c-wa{background:#f08a3c} .c-bad{background:var(--bad)} .c-gr{background:#b9c2d0}
+.det td{background:#fbfcfe;padding:0}
+.det table{font-size:12px} .det td{border-top:1px dashed var(--line)}
+.loc{display:inline-block;border-radius:6px;padding:2px 7px;font-weight:600;font-size:12px}
+.loc.ok{background:var(--okbg);color:var(--ok)} .loc.tr{background:#fff3cd;color:#8a6300} .loc.wa{background:#ffe9dc;color:#b4520f} .loc.bad{background:var(--badbg);color:var(--bad)} .loc.dn{background:#dfe7f5;color:var(--navy)} .c-dn{background:var(--navy)}
+.ain{border:1px solid var(--line);border-radius:6px;padding:4px 5px;font-family:inherit;font-weight:700;font-size:13px;background:#fff}
+.ain.ord{width:52px;text-align:center}
+.ain.car{min-width:88px} .car-h{background:var(--okbg);color:var(--ok);border-color:#a8dcb9} .car-a{background:var(--infobg);color:var(--info);border-color:#b3cdf5} .car.sug{font-style:italic;font-weight:500;opacity:.85}
+.d1 td.sep{border-right:2px solid #d6dce6}
+@media print{.ain{border:0;background:none;-webkit-appearance:none;appearance:none}}
+.xbtn{border:1px solid var(--line);background:#fff;border-radius:6px;color:var(--soft);padding:1px 6px;font-size:12px} .xbtn:hover{background:var(--badbg);color:var(--bad);border-color:#f3b3b3}
+.msgpanel{background:#fff;border-radius:12px;padding:10px 12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.mchip{border:1px solid var(--line);background:#f3f8f1;border-radius:8px;padding:5px 9px;margin:3px;font-size:12px;font-weight:600;color:#2c5a1d;display:inline-flex;align-items:center;gap:5px}
+.mchip.off{background:#eceff4;color:var(--soft);text-decoration:none}
+.hidbox{margin-top:10px;background:#fff;border-radius:12px;padding:8px 12px;font-size:13px}
+.loc.gr{background:#eceff4;color:var(--soft)}
+@media print{.xbtn,.hidbox,.msgpanel,header,nav.tabs,.toolbar,.srcline,#loading{display:none!important}main{padding:0}.d1 tr.det{display:table-row!important}}
+@media (max-width:700px){.search{width:100%}.datenav{margin-left:0}.vgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login" class="hidden">
+  <div class="box">
+    <h1>PORTO<span>EX</span></h1>
+    <p>Painel Situacional de Cargas — entre com o mesmo usuário da Conferência Geral.</p>
+    <label class="f">E-mail</label><input class="i" id="lg-email" type="email" autocomplete="username">
+    <label class="f">Senha</label><input class="i" id="lg-senha" type="password" autocomplete="current-password">
+    <div style="margin-top:16px"><button class="btn o" style="width:100%" id="lg-btn">Entrar</button></div>
+    <div class="err" id="lg-err"></div>
+  </div>
+</div>
+
+<header>
+  <div class="brand"><b>PORTO<span>EX</span></b><small>Painel Situacional de Cargas</small></div>
+  <input class="search" id="q" placeholder="🔎 NF, placa, cliente…">
+  <div class="datenav">
+    <button id="d-prev" title="Dia anterior">◀</button>
+    <div class="day" id="d-label">—<small>&nbsp;</small></div>
+    <button id="d-next" title="Próximo dia">▶</button>
+    <button id="d-today">Hoje</button>
+  </div>
+  <div class="upd" id="upd">—</div>
+  <button class="hbtn" id="btn-reload" title="Atualizar agora">⟳</button>
+  <button class="hbtn" id="btn-cfg" title="Configurações">⚙</button>
+</header>
+<nav class="tabs" id="tabs">
+  <button data-t="pan" class="on">📍 Panorama</button>
+  <button data-t="col">🚚 Coletas</button>
+  <button data-t="sai">📦 Entregas / Embarques</button>
+  <button data-t="agd">📅 Agendadas</button>
+  <button data-t="ale">⚠ Alertas <span class="badge hidden" id="ale-badge">0</span></button>
+  <button data-t="hoje">📋 Alinhamento Hoje</button>
+  <button data-t="d1">🗓 Alinhamento D+1</button>
+  <button data-t="inv">🔍 Inventário × Ontem</button>
+</nav>
+<main id="main"></main>
+<div id="loading" class="hidden">Carregando…</div>
+<div id="modal-root"></div>
+
+<script>
+/* ============================================================
+   CONFIGURAÇÃO
+   ============================================================ */
+const APP_VERSION = '2026.11.11-1';
+
+// Conferência Geral (Firestore + Auth) — mesmo projeto do conferente.html
+const FB_CONF = {
+  apiKey: "AIzaSyBp_ZfFiz1qWr4Gb4bc5h5mI1kHnjPwyCA",
+  authDomain: "conferenciaptx.firebaseapp.com",
+  projectId: "conferenciaptx",
+  storageBucket: "conferenciaptx.firebasestorage.app",
+  messagingSenderId: "78686885828",
+  appId: "1:78686885828:web:0d70d13e2abaf35ee23691"
+};
+// Inventário diário (Realtime Database) — INVENTARIO_PORTOEX_2026
+const FB_INV = {
+  apiKey: "AIzaSyCqc7fvri9fm3a2XJ-5M60GIFEYsUdbGoM",
+  authDomain: "portoex-inventario.firebaseapp.com",
+  databaseURL: "https://portoex-inventario-default-rtdb.firebaseio.com",
+  projectId: "portoex-inventario"
+};
+// Planilha de Programação usada se nada estiver configurado
+const SHEET_ID_PADRAO = '1R94r4llhbqlzYVGK8YqsyEIJn9bAkBsn6V3NCBl7MDM';
+
+const CFG_KEY = 'painelSituacional_cfg_v1';
+const CFG_DEF = {
+  sheetManual: '',          // se preenchido, ignora a planilha da Conferência Geral
+  diasAtras: 10,            // dias corridos lidos para trás (procura a coleta de origem)
+  diasFrente: 10,           // dias corridos lidos para frente (agendamentos)
+  refreshMin: 2,            // atualização automática (min)
+  dispensa: 'estoque, na base, deixado na base, base portoex, saindo do estoque, armazenagem'
+};
+let CFG = Object.assign({}, CFG_DEF, lsGet(CFG_KEY) || {});
+
+function lsGet(k){ try { return JSON.parse(localStorage.getItem(k)); } catch(e){ return null; } }
+function lsSet(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+
+/* ============================================================
+   FIREBASE
+   ============================================================ */
+firebase.initializeApp(FB_CONF);
+const auth = firebase.auth();
+const fs = firebase.firestore();
+const invApp = firebase.initializeApp(FB_INV, 'inventario');
+const invDb = invApp.database();
+
+/* ============================================================
+   DATAS
+   ============================================================ */
+const pad = n => String(n).padStart(2,'0');
+function fmtD(d){ return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear(); }
+function parseD(s){ const [d,m,y] = String(s).split('/').map(Number); return new Date(y,(m||1)-1,d||1); }
+function addD(s,n){ const d = parseD(s); d.setDate(d.getDate()+n); return fmtD(d); }
+function cmpD(a,b){ return parseD(a)-parseD(b); }
+function curto(s){ return s ? s.slice(0,5) : ''; }
+const SEMANA = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+function hhmm(d){ return pad(d.getHours())+':'+pad(d.getMinutes()); }
+function startOfDay(s){ return parseD(s).getTime(); }
+
+/* ============================================================
+   ESTADO
+   ============================================================ */
+const S = {
+  sheetId: '', sheetFonte: '',
+  ref: fmtD(new Date()),       // dia de referência (dd/mm/aaaa)
+  days: {},                    // 'dd/mm/aaaa' -> {status:'ok'|'notfound'|'erro', rows:[], vehicles:{} }
+  fallbackSig: null,
+  ops: [], opsUnsub: null, opsDias: '',
+  inv: [], invUnsub: null, invOk: null,
+  tab: 'pan', filtro: {col:'todas', sai:'todas'},
+  busca: '', lastLoad: null, loading: false,
+  A: null                      // análise do dia
+};
+
+/* ============================================================
+   NORMALIZAÇÃO / CHAVES
+   ============================================================ */
+function norm(s){ return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim(); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Placas antigas (ABC1234) e Mercosul (ABC1D23)
+function plates(s){
+  const t = String(s||'').toUpperCase().replace(/[-\s]/g,' ');
+  const out = []; const re = /\b([A-Z]{3})\s?(\d[A-Z0-9]\d{2})\b/g; let m;
+  while ((m = re.exec(t))) out.push(m[1]+m[2]);
+  return [...new Set(out)];
+}
+
+// Extrai as chaves de carga do campo NF (col M) — números de NF e DIs/DUIMPs.
+function nfKeys(nf, di){
+  const keys = [];
+  let s = String(nf||'').toUpperCase();
+  s = s.replace(/CT-?E\s*[:Nº°O.]*\s*\d+/g,' ');                       // "cte 147" não é NF
+  s = s.replace(/\d{2}\s*BR\s*\d{6,}[-\s]?\d?/g, m => { keys.push('DI'+m.replace(/\D/g,'')); return ' '; });
+  (s.match(/\d[\d.\-]*/g) || []).forEach(t => {
+    const d = t.replace(/\D/g,'').replace(/^0+/,'');
+    if (d.length >= 3) keys.push(d);
+  });
+  if (!keys.length && di) {                                            // sem NF: tenta DI da col N
+    (String(di).toUpperCase().match(/\d{2}\s*BR\s*\d{6,}[-\s]?\d?/g) || []).forEach(m => keys.push('DI'+m.replace(/\D/g,'')));
+  }
+  return [...new Set(keys)];
+}
+
+const STOP = new Set(['ltda','eireli','epp','me','sa','s','a','cia','comercio','com','industria','ind','de','da','do','dos','das','e','the','importacao','exportacao','transportes','transporte','logistica']);
+function firstWord(s){
+  const w = norm(s).replace(/[^a-z0-9 ]/g,' ').split(' ').filter(x => x.length >= 3 && !STOP.has(x) && !/^\d+$/.test(x));
+  return w[0] || '';
+}
+function clienteDe(op){
+  let s = norm(op).replace(/^(coleta|embarque|embaque|embarq|entrega|devolucao|devolver|devolucao de)\s*/,'');
+  s = s.replace(/\d{1,2}\/\d{1,2}(\/\d{2,4})?/g,' ');
+  return firstWord(s);
+}
+
+function tipoDe(op){
+  const s = norm(op);
+  if (/^colet/.test(s)) return 'COLETA';
+  if (/^(embarque|embaque|embarq)/.test(s)) return 'EMBARQUE';
+  if (/^entreg/.test(s)) return 'ENTREGA';
+  if (/^devol/.test(s)) return 'DEVOLUCAO';
+  if (/^transf/.test(s)) return 'TRANSFERENCIA';
+  return 'OUTRO';
+}
+const isSaida = r => r.tipo === 'EMBARQUE' || r.tipo === 'ENTREGA' || r.tipo === 'DEVOLUCAO';
+const isColeta = r => r.tipo === 'COLETA';
+const ehVeiculoHeader = a => /(\d[\d.]*\s*kg|carreta|truck|toco|vuc|bitruck|fiorino|van\b|3\/4|utilit)/i.test(a);
+
+function dispensaColeta(r){
+  const termos = String(CFG.dispensa||'').split(',').map(norm).filter(Boolean);
+  const t = norm(r.op);
+  return termos.some(x => t.includes(x));
+}
+
+// Duas linhas com a mesma chave são a mesma carga? NF curta (<5 díg.) exige mesmo destinatário ou cliente.
+function mesmaCarga(a,b,key){
+  if (key.startsWith('DI') || key.length >= 5) return true;
+  return (a.destW && a.destW === b.destW) || (a.cliW && a.cliW === b.cliW);
+}
+
+/* ============================================================
+   LEITURA DA PLANILHA (gviz)
+   ============================================================ */
+let _cb = 0;
+function gvizUrl(sheet, extra){
+  return 'https://docs.google.com/spreadsheets/d/'+S.sheetId+'/gviz/tq?tqx=out:json'+(extra||'')+'&headers=1&sheet='+encodeURIComponent(sheet)+'&_t='+Date.now();
+}
+function parseGvizText(text){
+  const a = text.indexOf('{'), b = text.lastIndexOf('}');
+  if (a < 0) throw new Error('resposta inválida');
+  return JSON.parse(text.slice(a, b+1));
+}
+function gvizJsonp(sheet){
+  return new Promise((res, rej) => {
+    const name = '__ps_cb'+(_cb++);
+    const sc = document.createElement('script');
+    const done = () => { delete window[name]; sc.remove(); };
+    window[name] = d => { done(); res(d); };
+    sc.onerror = () => { done(); rej(new Error('jsonp')); };
+    sc.src = gvizUrl(sheet, ';responseHandler:'+name);
+    document.head.appendChild(sc);
+    setTimeout(() => { if (window[name]) { done(); rej(new Error('timeout')); } }, 25000);
+  });
+}
+async function gvizGet(sheet){
+  try {
+    const r = await fetch(gvizUrl(sheet), {cache:'no-store'});
+    return parseGvizText(await r.text());
+  } catch(e) {
+    return await gvizJsonp(sheet);
+  }
+}
+function sigOf(table){
+  return JSON.stringify((table.rows||[]).slice(0,25).map(r => (r.c||[]).slice(0,3).map(c => c && c.v)));
+}
+// Lista de abas (nome -> gid) a partir da página pública htmlview
+async function loadTabList(){
+  const t = await (await fetch('https://docs.google.com/spreadsheets/d/'+S.sheetId+'/htmlview?_t='+Date.now(), {cache:'no-store'})).text();
+  const map = {}; const re = /name:\s*"((?:[^"\\]|\\.)*)"[^}]*?gid:\s*"(\d+)"/g; let m;
+  while ((m = re.exec(t))) {
+    const name = m[1].replace(/\\\//g,'/').replace(/\\x([0-9a-f]{2})/gi, (_,x) => String.fromCharCode(parseInt(x,16))).trim();
+    const d = name.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+    if (d) map[pad(d[1])+'/'+pad(d[2])+'/'+(d[3] ? (d[3].length===2 ? '20'+d[3] : d[3]) : new Date().getFullYear())] = m[2];
+  }
+  return map;
+}
+function parseCsv(t){
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (q) { if (ch === '"') { if (t[i+1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cur); cur = ''; }
+    else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+    else if (ch !== '\r') cur += ch;
+  }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+async function csvDay(gid){
+  const r = await fetch('https://docs.google.com/spreadsheets/d/'+S.sheetId+'/export?format=csv&gid='+gid+'&_t='+Date.now(), {cache:'no-store'});
+  if (!r.ok) throw new Error('HTTP '+r.status);
+  const rows = parseCsv(await r.text());
+  return rows.slice(1).map((c, i) => ({ n: i+2, c: c.map(x => String(x||'').trim()) }));   // n = linha real na planilha
+}
+
+function cellVal(c, isNf){
+  if (!c) return '';
+  const v = c.v, f = c.f;
+  if (v === null || v === undefined) return f ? String(f).trim() : '';
+  if (typeof v === 'number') return isNf ? String(v) : String(f != null ? f : v).trim();
+  if (typeof v === 'string' && /^Date\(/.test(v)) {
+    if (f) return String(f).trim();
+    const m = v.match(/Date\((\d+),(\d+),(\d+),?(\d+)?,?(\d+)?/);
+    return m && m[4] != null ? pad(m[4])+':'+pad(m[5]||0) : v;
+  }
+  return String(v).trim();
+}
+function gvizToRows(table){ return (table.rows||[]).map((r,i) => ({ n: i+2, c: (r.c||[]).map((c,idx) => cellVal(c, idx===12)) })); }
+
+function parseDay(dia, linhas){
+  const rows = [], vehicles = {};
+  let titulo = '';
+  linhas.forEach(L => {
+    const c = L.c, i = L.n;
+    const g = idx => c[idx] || '';
+    const op = g(0);
+    if (!op && !g(2)) return;
+    if (/^coleta\/entrega\/processo/i.test(op)) return;      // cabeçalho repetido
+    const pl = plates(g(2));
+    if (!pl.length) {                                        // linha de título de bloco
+      if (op && !g(12) && !g(7)) {
+        if (!/^ve[ií]culos?\s*-\s*motoristas/i.test(op) && !/^planilha com/i.test(op)) titulo = op;
+      }
+    }
+    const row = {
+      id: dia+'#'+i, dia, i, op, tipo: tipoDe(op),
+      motorista: g(1), placaTxt: g(2), placas: pl, placa: pl[0] || '',
+      peso: g(3), vol: g(4), valor: g(6), dest: g(7), horaProg: g(8), chegada: g(9), finalizou: g(10),
+      cidade: g(11), nf: g(12), di: g(13), servico: g(14), oc: g(16), md: g(17), resp: g(18), status: g(19)
+    };
+    if (!pl.length) return;
+    const vk = row.placa;
+    if (!vehicles[vk]) vehicles[vk] = { placa: vk, placas: pl, placaTxt: row.placaTxt, motorista: row.motorista, tipoVeiculo: '', turno: titulo, rows: [], ordem: Object.keys(vehicles).length };
+    const V = vehicles[vk];
+    if (row.motorista && !V.motorista) V.motorista = row.motorista;
+    if (row.tipo === 'OUTRO' && ehVeiculoHeader(op) && !row.nf && !row.dest) { V.tipoVeiculo = op; if (titulo && !V.turno) V.turno = titulo; return; }
+    if (row.tipo === 'OUTRO') { if (/manuten/i.test(op)) V.obs = op; return; }
+    row.keys = nfKeys(row.nf, row.di);
+    row.destW = firstWord(row.dest);
+    row.cliW = clienteDe(op);
+    row.exec = !!row.finalizou && row.finalizou !== '-';
+    V.rows.push(row); rows.push(row);
+  });
+  return { rows, vehicles };
+}
+
+async function loadDay(dia){
+  try {
+    let linhas;
+    if (S.tabs) {
+      const gid = S.tabs[dia];
+      if (gid == null) return S.days[dia] = { status:'notfound', rows:[], vehicles:{} };
+      linhas = await csvDay(gid);
+    } else {                                   // plano B: gviz (pode perder NFs em texto)
+      const d = await gvizGet(dia);
+      if (!d || d.status === 'error' || !d.table) return S.days[dia] = { status:'notfound', rows:[], vehicles:{} };
+      if (S.fallbackSig && sigOf(d.table) === S.fallbackSig) return S.days[dia] = { status:'notfound', rows:[], vehicles:{} };
+      linhas = gvizToRows(d.table);
+    }
+    return S.days[dia] = Object.assign({ status:'ok' }, parseDay(dia, linhas));
+  } catch(e) {
+    console.warn('[aba]', dia, e);
+    return S.days[dia] = S.days[dia] && S.days[dia].status === 'ok' ? S.days[dia] : { status:'erro', rows:[], vehicles:{} };
+  }
+}
+
+async function pLimit(items, n, fn){
+  const q = items.slice(); const run = async () => { while (q.length) await fn(q.shift()); };
+  await Promise.all(Array.from({length:n}, run));
+}
+
+async function resolveSheet(){
+  if (CFG.sheetManual) { S.sheetId = parseSheetId(CFG.sheetManual); S.sheetFonte = 'manual (este painel)'; return; }
+  try {
+    const doc = await fs.collection('config').doc('app').get();
+    if (doc.exists && doc.data().sheetId) { S.sheetId = doc.data().sheetId; S.sheetFonte = 'Conferência Geral (automático)'; return; }
+  } catch(e) { console.warn('config/app', e); }
+  S.sheetId = SHEET_ID_PADRAO; S.sheetFonte = 'padrão';
+}
+function parseSheetId(s){ const m = String(s||'').match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/); return m ? m[1] : String(s||'').trim(); }
+
+async function loadAll(full){
+  if (S.loading) return; S.loading = true; showLoading('Lendo a Programação…');
+  try {
+    try { S.tabs = await loadTabList(); if (!Object.keys(S.tabs).length) S.tabs = null; } catch(e) { console.warn('htmlview', e); S.tabs = null; }
+    if (!S.tabs && S.fallbackSig === null) {  // assinatura do que o gviz devolve para aba inexistente
+      try { const d = await gvizGet('__aba_inexistente_painel__'); S.fallbackSig = (d && d.table && d.status !== 'error') ? sigOf(d.table) : ''; }
+      catch(e){ S.fallbackSig = ''; }
+    }
+    const dias = [];
+    for (let o = -CFG.diasAtras; o <= CFG.diasFrente; o++) dias.push(addD(S.ref, o));
+    const ontemCal = addD(fmtD(new Date()), -3);
+    const precisa = dias.filter(d => full || !S.days[d] || S.days[d].status !== 'ok' || cmpD(d, ontemCal) >= 0);
+    let feitos = 0;
+    await pLimit(precisa, 6, async d => { await loadDay(d); feitos++; showLoading('Lendo a Programação… '+feitos+'/'+precisa.length); });
+    S.lastLoad = new Date();
+  } finally { S.loading = false; hideLoading(); }
+  subscribeOps();
+  render();
+}
+
+/* ============================================================
+   CONFERÊNCIA GERAL — operações (ENTRADA = descarga, SAÍDA = carregamento)
+   ============================================================ */
+function subscribeOps(){
+  const prev = diaAnterior(S.ref);
+  const prox = diasOk().find(d => cmpD(d, S.ref) > 0) || addD(S.ref,1);
+  const dias = [...new Set([S.ref, prev, addD(S.ref,1), prox])].filter(Boolean).slice(0,10);
+  const key = dias.join('|');
+  if (S.opsDias === key && S.opsUnsub) return;
+  if (S.opsUnsub) S.opsUnsub();
+  S.opsDias = key;
+  S.opsUnsub = fs.collection('operacoes').where('dataRef','in',dias).onSnapshot(snap => {
+    S.ops = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    S.opsOk = true; render();
+  }, err => { console.warn('operacoes', err); S.opsOk = false; render(); });
+}
+
+function opsDoVeiculo(V, dia){
+  return S.ops.filter(o => o.dataRef === dia && plates(o.placa).some(p => V.placas.includes(p)))
+    .sort((a,b) => tsMs(a.timestamp) - tsMs(b.timestamp));
+}
+function tsMs(t){ return t && t.toMillis ? t.toMillis() : (t && t.seconds ? t.seconds*1000 : (typeof t === 'number' ? t : 0)); }
+
+// índice NF -> conferências (para marcar a linha como conferida)
+function confIndex(){
+  const idx = {};
+  S.ops.forEach(o => (o.nfs || []).forEach(n => {
+    nfKeys(n.nf, n.di).forEach(k => {
+      (idx[k] = idx[k] || []).push({ tipo:o.tipoExecucao, dia:o.dataRef, placa:o.placa, status:n.status, hora: tsMs(o.timestamp) ? hhmm(new Date(tsMs(o.timestamp))) : '', quem:o.conferenteNome||'' });
+    });
+  }));
+  return idx;
+}
+
+/* ============================================================
+   INVENTÁRIO (RTDB) — leituras dos últimos dias
+   ============================================================ */
+function subscribeInv(){
+  if (S.invUnsub) return;
+  const desde = Date.now() - 4*86400000;
+  const q = invDb.ref('inventario').orderByChild('ts').startAt(desde);
+  const cb = q.on('value', snap => {
+    const arr = []; snap.forEach(ch => { const v = ch.val(); if (v && v.nf) arr.push(Object.assign({ __k: ch.key }, v)); });
+    S.inv = arr; S.invOk = true; render();
+  }, err => { console.warn('inventario', err); S.invOk = false; render(); });
+  S.invUnsub = () => q.off('value', cb);
+}
+function invDoDia(dia){
+  const a = startOfDay(dia), b = a + 86400000;
+  return S.inv.filter(i => Number(i.ts) >= a && Number(i.ts) < b);
+}
+
+/* ============================================================
+   ANÁLISE
+   ============================================================ */
+function diasOk(){ return Object.keys(S.days).filter(d => S.days[d].status === 'ok').sort(cmpD); }
+function diaAnterior(dia){ const ds = diasOk().filter(d => cmpD(d, dia) < 0); return ds[ds.length-1] || addD(dia,-1); }
+
+function analisar(){
+  const R = S.ref, P = diaAnterior(R);
+  const all = []; diasOk().forEach(d => S.days[d].rows.forEach(r => all.push(r)));
+  // índice chave -> linhas
+  const idx = {};
+  all.forEach(r => r.keys.forEach(k => (idx[k] = idx[k] || []).push(r)));
+  const rel = r => {
+    const m = new Map();
+    r.keys.forEach(k => (idx[k] || []).forEach(x => { if (x !== r && mesmaCarga(r, x, k)) m.set(x.id, x); }));
+    return [...m.values()];
+  };
+  const conf = confIndex();
+  const confDe = r => { const out = []; r.keys.forEach(k => (conf[k]||[]).forEach(c => out.push(c))); return out; };
+
+  // status de execução: planilha (col K) ou Conferência Geral
+  const execInfo = r => {
+    if (r.exec) return { ok:true, src:'planilha', hora:r.finalizou };
+    const tipoConf = isColeta(r) ? 'ENTRADA' : 'SAIDA';
+    const c = confDe(r).find(c => c.dia === r.dia && c.tipo === tipoConf && plates(c.placa).some(p => r.placas.includes(p)));
+    if (c) return { ok:true, src:'conferência', hora:c.hora, quem:c.quem, st:c.status };
+    return { ok:false };
+  };
+
+  const hoje = S.days[R] && S.days[R].status === 'ok' ? S.days[R].rows : [];
+  const coletas = hoje.filter(isColeta);
+  const saidas = hoje.filter(isSaida);
+
+  coletas.forEach(c => {
+    c._rel = rel(c);
+    c._dest = c._rel.filter(x => isSaida(x) && cmpD(x.dia, c.dia) >= 0).sort((a,b) => cmpD(a.dia,b.dia) || a.i-b.i);
+    c._ex = execInfo(c); c._conf = confDe(c);
+  });
+  saidas.forEach(s => {
+    s._rel = rel(s);
+    s._orig = s._rel.filter(x => (isColeta(x) || (isSaida(x) && x.exec)) && cmpD(x.dia, s.dia) <= 0).sort((a,b) => cmpD(b.dia,a.dia) || (isColeta(a)?-1:1));
+    s._ex = execInfo(s); s._conf = confDe(s);
+  });
+
+  // ---------- ALERTAS ----------
+  const alerts = [];
+  const add = (tipo, nivel, titulo, linhas, extra) => alerts.push({ tipo, nivel, titulo, linhas, extra: extra||'' });
+  const diasFut = diasOk().filter(d => cmpD(d, R) >= 0);
+  const saidasFut = []; diasFut.forEach(d => S.days[d].rows.filter(isSaida).forEach(r => saidasFut.push(r)));
+
+  // 1) mesma carga em dois veículos (ou repetida) no mesmo dia
+  const vistos = new Set();
+  diasFut.forEach(d => {
+    const rs = S.days[d].rows.filter(isSaida); const byK = {};
+    rs.forEach(r => r.keys.forEach(k => (byK[k] = byK[k] || []).push(r)));
+    Object.keys(byK).forEach(k => {
+      const grupo = byK[k].filter((x, _, arr) => arr.some(y => y !== x && mesmaCarga(x, y, k)));
+      if (grupo.length < 2) return;
+      const sig = d+'|'+grupo.map(x => x.id).sort().join(',');
+      if (vistos.has(sig)) return; vistos.add(sig);
+      const pls = new Set(grupo.map(x => x.placa));
+      if (pls.size > 1) add('dup', 'high', 'Carga em '+pls.size+' veículos para embarcar — '+curto(d), grupo, 'NF '+k);
+      else add('rep', 'warn', 'Linha repetida na mesma placa — '+curto(d), grupo, 'NF '+k);
+    });
+  });
+  // 1b) programada (pendente) em dois dias diferentes
+  const vistosDias = new Set();
+  saidasFut.filter(r => !r.exec).forEach(r => {
+    const outros = rel(r).filter(x => isSaida(x) && !x.exec && x.dia !== r.dia && cmpD(x.dia, R) >= 0);
+    if (!outros.length) return;
+    const grupo = [r, ...outros]; const sig = grupo.map(x => x.id).sort().join(',');
+    if (vistosDias.has(sig)) return; vistosDias.add(sig);
+    add('dias', 'warn', 'Mesma carga programada em '+new Set(grupo.map(x=>x.dia)).size+' dias', grupo);
+  });
+  // 2) saiu (col K) num dia anterior e aparece de novo hoje/futuro
+  saidasFut.forEach(r => {
+    const ant = rel(r).filter(x => isSaida(x) && cmpD(x.dia, r.dia) < 0 && (x.exec || execInfo(x).ok));
+    if (ant.length) add('reprog', 'high', 'Saída já executada em '+curto(ant[0].dia)+' e programada de novo em '+curto(r.dia), [...ant, r], 'Aparentemente entregue/embarcada — confirmar se voltou para a base');
+  });
+  // 3) saída sem nenhuma coleta registrada
+  saidasFut.forEach(r => {
+    if (!r.keys.length) return;
+    const orig = rel(r).filter(x => (isColeta(x) || (isSaida(x) && x.exec)) && cmpD(x.dia, r.dia) <= 0 && x !== r);
+    if (!orig.length && !dispensaColeta(r)) add('semcol', 'info', 'Para embarcar sem coleta registrada — '+curto(r.dia), [r], 'Nenhuma coleta com esta NF nos últimos '+CFG.diasAtras+' dias');
+  });
+  // 4) coletas (até ontem) sem nenhuma saída programada
+  diasOk().filter(d => cmpD(d, R) < 0 && cmpD(d, addD(R, -5)) >= 0).forEach(d => {
+    S.days[d].rows.filter(isColeta).forEach(c => {
+      if (!c.keys.length) return;
+      const dest = rel(c).filter(x => isSaida(x) && cmpD(x.dia, c.dia) >= 0);
+      if (!dest.length) add('parada', 'warn', 'Coletada em '+curto(d)+' e sem saída programada', [c], 'Carga possivelmente parada na base');
+    });
+  });
+  // 5) cargas de ontem achadas no inventário de hoje
+  const invHoje = invDoDia(R);
+  const invIdx = {}; invHoje.forEach(i => nfKeys(i.nf).forEach(k => (invIdx[k] = invIdx[k] || []).push(i)));
+  const achadas = [];
+  if (S.days[P] && S.days[P].status === 'ok') {
+    S.days[P].rows.filter(isSaida).forEach(r => {
+      const hits = []; r.keys.forEach(k => (invIdx[k]||[]).forEach(i => hits.push(i)));
+      if (!hits.length) return;
+      const reprog = rel(r).filter(x => isSaida(x) && cmpD(x.dia, R) >= 0);
+      const item = { r, hits, reprog, ex: execInfo(r) };
+      achadas.push(item);
+      if (!reprog.length) add('inv', 'high', 'Carga de ontem ACHADA no inventário — REPROGRAMAR', [r], 'Lida em '+hits.map(h => hhmm(new Date(Number(h.ts)))+(h.end?' · end. '+h.end:'')+(h.operador?' · '+h.operador:'')).join(' / '));
+      else add('invok', 'info', 'Carga de ontem achada no inventário — já reprogramada', [r, ...reprog], 'Lida em '+hits.map(h => hhmm(new Date(Number(h.ts)))).join(', '));
+    });
+  }
+
+  // veículos do dia
+  const V = S.days[R] && S.days[R].status === 'ok' ? Object.values(S.days[R].vehicles).filter(v => v.rows.length || v.tipoVeiculo).sort((a,b)=>a.ordem-b.ordem) : [];
+  V.forEach(v => {
+    v._ops = opsDoVeiculo(v, R);
+    const ex = v.rows.map(r => r._ex || execInfo(r));
+    v._feitos = ex.filter(e => e.ok).length; v._total = v.rows.length;
+    v._alerts = alerts.filter(a => a.linhas.some(l => l.dia === R && l.placa === v.placa)).length;
+  });
+
+  return { R, P, coletas, saidas, alerts, V, achadas, invHoje, rel, execInfo, diasFut };
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+const $ = s => document.querySelector(s);
+function showLoading(t){ const el = $('#loading'); el.textContent = t; el.classList.remove('hidden'); }
+function hideLoading(){ $('#loading').classList.add('hidden'); }
+
+function render(){
+  const ae = document.activeElement;
+  if (ae && ae.classList && ae.classList.contains('ain')) { S.pendRender = true; return; }
+  const day = S.days[S.ref];
+  const d = parseD(S.ref);
+  $('#d-label').innerHTML = esc(S.ref)+'<small>'+SEMANA[d.getDay()]+(day && day.status !== 'ok' ? ' · sem aba' : '')+'</small>';
+  $('#upd').innerHTML = (S.lastLoad ? 'Planilha: '+hhmm(S.lastLoad) : '—')+'<br>'+
+    '<span class="dot '+(S.opsOk?'on':S.opsOk===false?'off':'')+'"></span>Conferência '+
+    '<span class="dot '+(S.invOk?'on':S.invOk===false?'off':'')+'" style="margin-left:6px"></span>Inventário';
+  if (!S.lastLoad) return;
+  S.A = analisar();
+  const nAle = S.A.alerts.filter(a => a.nivel !== 'info' || a.tipo === 'semcol').length;
+  const nHigh = S.A.alerts.filter(a => a.nivel === 'high').length;
+  const b = $('#ale-badge'); b.textContent = nHigh || nAle; b.classList.toggle('hidden', !nAle);
+  b.style.background = nHigh ? 'var(--bad)' : 'var(--warn)';
+  const m = $('#main');
+  if (S.busca) { m.innerHTML = viewBusca(); return; }
+  if (!day || day.status !== 'ok') { m.innerHTML = '<div class="empty">Não encontrei a aba <b>'+esc(S.ref)+'</b> na planilha de Programação.<br><span class="small">Planilha: '+esc(S.sheetId)+' ('+esc(S.sheetFonte)+')</span></div>' + (S.tab === 'agd' ? viewAgd() : ''); return; }
+  m.innerHTML = ({pan:viewPan, col:viewCol, sai:viewSai, agd:viewAgd, ale:viewAle, inv:viewInv, d1:viewD1, hoje:viewHoje}[S.tab])() + rodape();
+}
+
+function rodape(){
+  const ok = diasOk();
+  return '<div class="srcline">Planilha <b>'+esc(S.sheetId.slice(0,12))+'…</b> ('+esc(S.sheetFonte)+') · '+ok.length+' abas lidas ('+esc(ok[0]||'')+' a '+esc(ok[ok.length-1]||'')+') · "Ontem" = '+esc(S.A.P)+' · v'+APP_VERSION+'</div>';
+}
+
+function exPill(e){
+  if (!e || !e.ok) return '<span class="pill p-gray">pendente</span>';
+  const nok = e.st === 'NAO_OK' ? ' <span class="pill p-bad">NÃO OK</span>' : '';
+  return '<span class="pill p-ok" title="'+esc(e.src+(e.quem?' · '+e.quem:''))+'">✓ '+esc(e.hora||'')+(e.src==='conferência'?' 📋':'')+'</span>'+nok;
+}
+function nfLabel(r){ return r.nf || (r.keys[0] ? r.keys[0].replace(/^DI/,'DI ') : '—'); }
+function chipDest(list, base){
+  if (!list.length) return '<span class="chip bad">⚠ sem saída programada</span>';
+  const g = {};
+  list.forEach(x => { const k = x.placa+'|'+x.dia; (g[k] = g[k] || { placa:x.placa, dia:x.dia, n:0, ex:true }).n++; if (!x.exec) g[k].ex = false; });
+  return Object.values(g).map(x => '<span class="chip" title="'+(x.ex?'executada':'pendente')+'">'+(x.dia===base?'hoje':curto(x.dia))+' → <span class="plate sm">'+esc(x.placa)+'</span>'+(x.ex?' ✓':'')+'</span>').join(' ');
+}
+function chipOrig(list, r){
+  if (!list.length) return dispensaColeta(r) ? '<span class="chip">🏬 estoque/base</span>' : '<span class="chip warn">⚠ sem coleta</span>';
+  const x = list[0];
+  return '<span class="chip">'+(isColeta(x)?'coleta ':'↩ saiu ')+(x.dia===r.dia?'hoje':curto(x.dia))+' · <span class="plate sm">'+esc(x.placa)+'</span>'+(x.exec?' ✓':'')+'</span>';
+}
+
+/* ---------- PANORAMA ---------- */
+function viewPan(){
+  const A = S.A;
+  const colEx = A.coletas.filter(c => c._ex.ok).length, saiEx = A.saidas.filter(s => s._ex.ok).length;
+  const agd = A.diasFut.filter(d => d !== A.R).reduce((n, d) => n + S.days[d].rows.filter(isSaida).length, 0);
+  const semDest = A.coletas.filter(c => !c._dest.length).length;
+  const high = A.alerts.filter(a => a.nivel === 'high').length;
+  const pct = (a,b) => b ? Math.round(a*100/b) : 0;
+  let h = '<div class="kpis">'+
+    kpi('b','Coletas do dia', A.coletas.length, colEx+' executadas · '+(A.coletas.length-colEx)+' faltam', pct(colEx,A.coletas.length), "col")+
+    kpi('o','Entregas / embarques', A.saidas.length, saiEx+' executadas · '+(A.saidas.length-saiEx)+' faltam', pct(saiEx,A.saidas.length), "sai")+
+    kpi('','Agendadas p/ próximos dias', agd, 'linhas de saída em '+(A.diasFut.length-1)+' abas futuras', null, "agd")+
+    kpi(semDest?'r':'g','Coletas sem destino', semDest, 'coletas de hoje sem saída programada', null, "col")+
+    kpi(high?'r':'g','Alertas críticos', high, A.alerts.length+' alertas no total', null, "ale")+
+    '</div>';
+  h += '<div class="sec-title"><h2>Veículos do dia</h2><span class="hint">progresso = linhas com hora na coluna K ou conferidas na Conferência Geral</span></div><div class="vgrid">';
+  h += A.V.map(vcard).join('') || '<div class="empty">Nenhum veículo nesta aba.</div>';
+  return h + '</div>';
+}
+function kpi(cls,l,v,s,pct,tab){
+  return '<div class="kpi '+cls+'" onclick="goTab(\''+tab+'\')"><div class="l">'+l+'</div><div class="v">'+v+'</div><div class="s">'+s+'</div>'+(pct!=null?'<div class="bar"><i style="width:'+pct+'%"></i></div>':'')+'</div>';
+}
+function vcard(v){
+  const A = S.A;
+  const col = v.rows.filter(isColeta), sai = v.rows.filter(isSaida), outros = v.rows.filter(r => !isColeta(r) && !isSaida(r));
+  const pct = v._total ? Math.round(v._feitos*100/v._total) : 0;
+  let st = v._total && v._feitos === v._total ? '<span class="pill p-ok">Concluído</span>' : v._feitos ? '<span class="pill p-warn">Em execução '+v._feitos+'/'+v._total+'</span>' : '<span class="pill p-gray">Aguardando</span>';
+  if (!v._total) st = '<span class="pill p-gray">'+(v.obs?'Manutenção':'Sem cargas')+'</span>';
+  // conferência
+  const opsE = v._ops.filter(o => o.tipoExecucao === 'ENTRADA'), opsS = v._ops.filter(o => o.tipoExecucao === 'SAIDA');
+  const fmtOp = o => '<b>'+hhmm(new Date(tsMs(o.timestamp)))+'</b> '+esc((o.conferenteNome||'').split(' ')[0])+(o.status==='PARCIAL'?' <span class="pill p-warn">parcial</span>':'');
+  const chegada = v.rows.map(r => r.chegada).find(Boolean);
+  let conf = '';
+  if (chegada) conf += '<span>🛬 chegada <b>'+esc(chegada)+'</b></span> ';
+  if (opsE.length) conf += '<span>📥 descarga conferida '+opsE.map(fmtOp).join(', ')+'</span> ';
+  if (opsS.length) conf += '<span>📤 carregamento conferido '+opsS.map(fmtOp).join(', ')+'</span>';
+  // destinos das coletas
+  let destH = '';
+  if (col.length) {
+    const g = {}; let sem = 0;
+    col.forEach(c => { if (!c._dest.length) { sem++; return; } const x = c._dest[0]; const k = x.placa+'|'+x.dia; (g[k] = g[k] || { placa:x.placa, dia:x.dia, n:0 }).n++; });
+    destH = '<div class="vrow"><span class="lbl">Carga segue</span>'+Object.values(g).map(x => '<span class="chip" onclick="filtroVeic(\''+x.placa+'\',\''+x.dia+'\')">'+(x.dia===A.R?'hoje':curto(x.dia))+' → <span class="plate sm">'+esc(x.placa)+'</span> '+x.n+' NF</span>').join(' ')+
+      (sem ? ' <span class="chip bad" onclick="goTab(\'col\',\'semdest\')">⚠ '+sem+' sem saída</span>' : '')+'</div>';
+  }
+  let origH = '';
+  if (sai.length) {
+    const g = {}; let sem = 0, est = 0;
+    sai.forEach(s => { if (!s._orig.length) { dispensaColeta(s) ? est++ : sem++; return; } const x = s._orig[0]; const k = x.placa+'|'+x.dia; (g[k] = g[k] || { placa:x.placa, dia:x.dia, n:0 }).n++; });
+    origH = '<div class="vrow"><span class="lbl">Origem</span>'+Object.values(g).map(x => '<span class="chip"><span class="plate sm">'+esc(x.placa)+'</span> '+(x.dia===A.R?'hoje':curto(x.dia))+' · '+x.n+' NF</span>').join(' ')+
+      (est ? ' <span class="chip">🏬 '+est+' estoque/base</span>' : '')+(sem ? ' <span class="chip warn">⚠ '+sem+' sem coleta</span>' : '')+'</div>';
+  }
+  return '<div class="vcard"><div class="vhead"><span class="plate">'+esc(v.placa)+'</span><div class="who"><b>'+esc(v.motorista||'—')+'</b><small title="'+esc(v.turno)+'">'+esc(v.tipoVeiculo ? v.tipoVeiculo.split(' - ')[0] : '')+(v.turno?' · '+esc(v.turno):'')+'</small></div>'+st+'</div>'+
+    '<div class="vbody">'+
+      '<div class="vrow"><span class="lbl">Cargas</span><span class="pill p-info">'+col.length+' coleta'+(col.length===1?'':'s')+'</span><span class="pill p-warn" style="background:#ffe9dc;color:var(--orange)">'+sai.length+' saída'+(sai.length===1?'':'s')+'</span>'+(outros.length?'<span class="pill p-gray">'+outros.length+' outros</span>':'')+(v._alerts?'<span class="pill p-bad">⚠ '+v._alerts+'</span>':'')+'</div>'+
+      (v._total ? '<div class="bar"><i style="width:'+pct+'%"></i></div>' : '')+
+      destH + origH +
+      (conf ? '<div class="conf">'+conf+'</div>' : '<div class="conf">Sem registro na Conferência Geral</div>')+
+      (v.obs ? '<div class="conf">🔧 '+esc(v.obs)+'</div>' : '')+
+    '</div></div>';
+}
+
+/* ---------- COLETAS ---------- */
+function viewCol(){
+  const A = S.A, f = S.filtro.col;
+  let rs = A.coletas;
+  if (f === 'pend') rs = rs.filter(c => !c._ex.ok);
+  if (f === 'exec') rs = rs.filter(c => c._ex.ok);
+  if (f === 'semdest') rs = rs.filter(c => !c._dest.length);
+  if (f === 'outro') rs = rs.filter(c => c._dest.some(x => x.placa !== c.placa));
+  if (S.filtroVeic) rs = rs.filter(c => c._dest.some(x => x.placa === S.filtroVeic.placa && x.dia === S.filtroVeic.dia));
+  const n = k => ({todas:A.coletas.length, pend:A.coletas.filter(c=>!c._ex.ok).length, exec:A.coletas.filter(c=>c._ex.ok).length, semdest:A.coletas.filter(c=>!c._dest.length).length, outro:A.coletas.filter(c=>c._dest.some(x=>x.placa!==c.placa)).length}[k]);
+  let h = '<div class="toolbar">'+[['todas','Todas'],['pend','Faltam'],['exec','Executadas'],['outro','Vão p/ outro veículo'],['semdest','⚠ Sem saída programada']].map(([k,l]) =>
+    '<button class="fbtn'+(f===k?' on':'')+'" onclick="setF(\'col\',\''+k+'\')">'+l+' ('+n(k)+')</button>').join('')+
+    (S.filtroVeic ? '<button class="fbtn on" onclick="S.filtroVeic=null;render()">destino '+esc(S.filtroVeic.placa)+' '+curto(S.filtroVeic.dia)+' ✕</button>' : '')+'</div>';
+  h += tabela(['Placa','Cliente / coleta','NF','Destinatário','Cidade','Vol','Prog.','Executada','Vai para'], groupBy(rs), r =>
+    '<td><span class="plate sm">'+esc(r.placa)+'</span></td><td class="small">'+esc(cut(r.op,70))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,40))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td>'+esc(r.horaProg)+'</td><td>'+exPill(r._ex)+'</td><td>'+chipDest(r._dest, A.R)+'</td>');
+  return h;
+}
+/* ---------- SAÍDAS ---------- */
+function viewSai(){
+  const A = S.A, f = S.filtro.sai;
+  let rs = A.saidas;
+  const semc = s => !s._orig.length && !dispensaColeta(s);
+  if (f === 'pend') rs = rs.filter(s => !s._ex.ok);
+  if (f === 'exec') rs = rs.filter(s => s._ex.ok);
+  if (f === 'semcol') rs = rs.filter(semc);
+  const n = k => ({todas:A.saidas.length, pend:A.saidas.filter(s=>!s._ex.ok).length, exec:A.saidas.filter(s=>s._ex.ok).length, semcol:A.saidas.filter(semc).length}[k]);
+  let h = '<div class="toolbar">'+[['todas','Todas'],['pend','Faltam'],['exec','Executadas'],['semcol','⚠ Sem coleta']].map(([k,l]) =>
+    '<button class="fbtn'+(f===k?' on':'')+'" onclick="setF(\'sai\',\''+k+'\')">'+l+' ('+n(k)+')</button>').join('')+'</div>';
+  h += tabela(['Placa','Tipo','Cliente','NF','Destinatário','Cidade','Vol','Status planilha','Executada','Origem'], groupBy(rs), r =>
+    '<td><span class="plate sm">'+esc(r.placa)+'</span></td><td class="small">'+esc(r.tipo)+'</td><td class="small">'+esc(cut(r.op,60))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,40))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td class="small">'+esc(r.status)+'</td><td>'+exPill(r._ex)+'</td><td>'+chipOrig(r._orig, r)+'</td>');
+  return h;
+}
+/* ---------- AGENDADAS ---------- */
+function viewAgd(){
+  const ref = S.ref;
+  const fut = diasOk().filter(d => cmpD(d, ref) > 0);
+  if (!fut.length) return '<div class="empty">Nenhuma aba futura encontrada (até '+CFG.diasFrente+' dias).</div>';
+  let h = '';
+  fut.forEach(d => {
+    const rs = S.days[d].rows.filter(r => isSaida(r) || isColeta(r));
+    if (!rs.length) return;
+    const dt = parseD(d);
+    h += '<div class="sec-title"><h2>'+esc(d)+' · '+SEMANA[dt.getDay()]+'</h2><span class="hint">'+rs.filter(isSaida).length+' saídas · '+rs.filter(isColeta).length+' coletas</span></div>';
+    h += tabela(['Placa','Tipo','Cliente','NF','Destinatário','Cidade','Vol','Origem (coleta)'], groupBy(rs), r => {
+      const orig = isSaida(r) ? S.A.rel(r).filter(x => isColeta(x) && cmpD(x.dia, r.dia) <= 0).sort((a,b)=>cmpD(b.dia,a.dia)) : null;
+      return '<td><span class="plate sm">'+esc(r.placa)+'</span></td><td class="small">'+esc(r.tipo)+'</td><td class="small">'+esc(cut(r.op,60))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,40))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td>'+(orig ? chipOrig(orig, r) : '')+'</td>';
+    });
+  });
+  return h || '<div class="empty">Nada agendado nas próximas abas.</div>';
+}
+/* ---------- ALERTAS ---------- */
+const ALE_INFO = {
+  inv:   ['🔴 Carga de ontem achada no inventário — reprogramar', 'Saiu na programação de ontem, mas foi lida no inventário de hoje e não está em nenhuma saída de hoje/futuro.'],
+  dup:   ['🔴 Mesma carga em dois veículos', 'A mesma NF está para embarcar em placas diferentes no mesmo dia.'],
+  reprog:['🔴 Saída já executada e programada de novo', 'Teve hora na coluna K (ou conferência de saída) num dia anterior e aparece de novo em outro veículo.'],
+  dias:  ['🟡 Programada em mais de um dia', 'A mesma NF está pendente em abas de dias diferentes.'],
+  rep:   ['🟡 Linha repetida na mesma placa', 'A mesma NF aparece duas vezes no mesmo veículo/dia.'],
+  parada:['🟡 Coletada e sem saída programada', 'Coletas dos últimos 5 dias sem nenhuma saída nas abas lidas.'],
+  semcol:['🔵 Para embarcar sem coleta registrada', 'Não achei coleta com a NF nas abas anteriores (exceto linhas de estoque/base — ajuste em ⚙).'],
+  invok: ['🔵 Achada no inventário, já reprogramada', 'Ficou na base ontem, mas já está em uma saída de hoje/futuro.']
+};
+function viewAle(){
+  const A = S.A;
+  if (!A.alerts.length) return '<div class="empty">Nenhum alerta 🎉</div>';
+  let h = '';
+  Object.keys(ALE_INFO).forEach(t => {
+    const list = A.alerts.filter(a => a.tipo === t);
+    if (!list.length) return;
+    h += '<div class="agroup"><h3>'+ALE_INFO[t][0]+' <span class="pill p-gray">'+list.length+'</span></h3><div class="muted small" style="margin:-4px 0 8px">'+ALE_INFO[t][1]+'</div>';
+    h += list.map(a => '<div class="alert '+(a.nivel==='high'?'high':a.nivel==='info'?'info':'')+'"><h4>'+esc(a.titulo)+'</h4><div class="det">'+
+      a.linhas.map(l => '<span class="chip" onclick="abrirCarga(\''+esc(l.keys[0]||'')+'\')">'+curto(l.dia)+' · <span class="plate sm">'+esc(l.placa)+'</span> · '+esc(l.tipo.toLowerCase())+' · NF '+esc(nfLabel(l))+' · '+esc(cut(l.dest||l.cliW,26))+(l.exec?' ✓'+esc(l.finalizou):'')+'</span>').join('')+
+      (a.extra ? '<span class="muted small">'+esc(a.extra)+'</span>' : '')+'</div></div>').join('');
+    h += '</div>';
+  });
+  return h;
+}
+/* ---------- INVENTÁRIO × ONTEM ---------- */
+function viewInv(){
+  const A = S.A;
+  if (S.invOk === false) return '<div class="empty">Não consegui ler o Inventário (Firebase portoex-inventario).</div>';
+  let h = '<div class="kpis">'+
+    kpi('', 'Leituras no inventário de '+curto(A.R), A.invHoje.length, new Set(A.invHoje.map(i=>norm(i.nf))).size+' NFs distintas', null, 'inv')+
+    kpi('', 'Saídas programadas em '+curto(A.P), (S.days[A.P]&&S.days[A.P].rows||[]).filter(isSaida).length, 'aba "ontem" usada na comparação', null, 'inv')+
+    kpi(A.achadas.filter(x=>!x.reprog.length).length?'r':'g', 'Achadas e SEM reprogramação', A.achadas.filter(x=>!x.reprog.length).length, 'precisam ser reprogramadas', null, 'inv')+
+    kpi('b', 'Achadas e já reprogramadas', A.achadas.filter(x=>x.reprog.length).length, 'estão em saída de hoje/futuro', null, 'inv')+'</div>';
+  if (!A.invHoje.length) h += '<div class="empty">Ainda não há leituras do inventário em '+esc(A.R)+'.</div>';
+  if (!A.achadas.length) return h + (A.invHoje.length ? '<div class="empty">Nenhuma carga de '+esc(A.P)+' foi encontrada no inventário de hoje ✔</div>' : '');
+  const ord = A.achadas.slice().sort((a,b) => (a.reprog.length?1:0) - (b.reprog.length?1:0));
+  h += tabela(['Situação','Placa ontem','Cliente','NF','Destinatário','Saída ontem','Lida no inventário','Reprogramada em'], ord.map(x => Object.assign({}, x.r, { _x:x })), r => {
+    const x = r._x;
+    return '<td>'+(x.reprog.length?'<span class="pill p-info">já reprogramada</span>':'<span class="pill p-bad">REPROGRAMAR</span>')+'</td><td><span class="plate sm">'+esc(r.placa)+'</span></td><td class="small">'+esc(cut(r.op,50))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,36))+'</td><td>'+exPill(x.ex)+'</td>'+
+      '<td class="small">'+x.hits.map(i => hhmm(new Date(Number(i.ts)))+(i.end?' · '+esc(i.end):'')+(i.operador?' · '+esc(i.operador):'')+(i.vol?' · '+esc(i.vol)+' vol':'')).join('<br>')+'</td>'+
+      '<td>'+(x.reprog.length ? chipDest(x.reprog, A.R) : '—')+'</td>';
+  }, true);
+  return h;
+}
+/* ---------- ALINHAMENTO D+1 ---------- */
+function numBR(s){ s = String(s||'').replace(/[^\d.,-]/g,''); if (!s) return 0; if (s.includes(',')) s = s.replace(/\./g,'').replace(',','.'); else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g,''); const n = parseFloat(s); return isNaN(n) ? 0 : n; }
+function fmtN(n, dec){ return n ? n.toLocaleString('pt-BR', { maximumFractionDigits: dec||0 }) : ''; }
+function horaMin(list){ const hs = list.map(r => r.horaProg).filter(x => /^\d{1,2}:\d{2}/.test(x)).sort((a,b) => a.padStart(5,'0').localeCompare(b.padStart(5,'0'))); return hs[0] || (list.find(r => r.horaProg) || {}).horaProg || ''; }
+function somar(list){ return { qt:list.length, peso:list.reduce((s,r)=>s+numBR(r.peso),0), vol:list.reduce((s,r)=>s+numBR(r.vol),0), valor:list.reduce((s,r)=>s+numBR(r.valor),0) }; }
+const precisaLiberacao = r => /sem md|em defini|aguard|libera|pend/i.test(r.status) || /^md$/i.test(r.md.trim());
+
+// Onde está a mercadoria de uma saída do dia D1?
+function localizar(r, D1){
+  const A = S.A;
+  if (!r.keys.length && !A.execInfo(r).ok) return dispensaColeta(r) ? { c:'wa', t:'Estoque/base — sem NF para conferir' } : { c:'gr', t:'Sem NF na linha' };
+  const exR = A.execInfo(r);
+  if (exR.ok) return { c:'dn', t:'Carregada/saiu '+(exR.hora||'')+(exR.src==='conferência'?' (conferência'+(exR.quem?' · '+exR.quem.split(' ')[0]:'')+')':'')+(exR.st==='NAO_OK'?' · NÃO OK':'') };
+  const rel = A.rel(r);
+  const hoje = diaAnterior(D1);
+  // 1) saiu (ou vai sair) em outro veículo antes de D1
+  const saiu = rel.filter(x => isSaida(x) && cmpD(x.dia, D1) < 0 && cmpD(x.dia, hoje) >= 0 && A.execInfo(x).ok);
+  if (saiu.length) return { c:'bad', t:'Já saiu em '+saiu[0].placa+' ('+curto(saiu[0].dia)+' '+(saiu[0].finalizou||'')+')' };
+  const outra = rel.filter(x => isSaida(x) && !x.exec && cmpD(x.dia, D1) < 0 && cmpD(x.dia, hoje) >= 0);
+  // 2) lida no inventário (desde o dia anterior a D1)
+  const desde = startOfDay(hoje);
+  const inv = S.inv.filter(i => Number(i.ts) >= desde && nfKeys(i.nf).some(k => r.keys.includes(k))).sort((a,b) => b.ts - a.ts)[0];
+  const aviso = outra.length ? ' · ⚠ também programada '+curto(outra[0].dia)+' em '+outra[0].placa : '';
+  if (inv) return { c: outra.length ? 'wa' : 'ok', t:'No armazém · inventário '+hhmm(new Date(Number(inv.ts)))+(inv.end?' · end. '+inv.end:'')+aviso };
+  // 3) descarga conferida na Conferência Geral
+  const ent = S.ops.filter(o => o.tipoExecucao === 'ENTRADA' && cmpD(o.dataRef, D1) <= 0 && (o.nfs||[]).some(n => nfKeys(n.nf, n.di).some(k => r.keys.includes(k))))
+    .sort((a,b) => tsMs(b.timestamp) - tsMs(a.timestamp))[0];
+  if (ent) return { c: outra.length ? 'wa' : 'ok', t:'No armazém · descarga conferida '+(tsMs(ent.timestamp)?hhmm(new Date(tsMs(ent.timestamp))):'')+' ('+ent.placa+')'+aviso };
+  // 4) coleta
+  const col = rel.filter(x => isColeta(x) && cmpD(x.dia, D1) <= 0).sort((a,b) => cmpD(b.dia,a.dia))[0];
+  if (col) {
+    const ex = A.execInfo(col);
+    if (col.dia === D1) return { c:'wa', t:'Coleta no próprio dia · '+col.placa+' prog. '+(col.horaProg||'—')+(ex.ok?' · coletada '+ex.hora:'') };
+    if (ex.ok) return { c:'tr', t:'Coletada '+curto(col.dia)+' '+(ex.hora||'')+' no '+col.placa+' — aguardando descarga/leitura' };
+    return { c:'tr', t:'Em coleta '+(col.dia===S.ref?'hoje':curto(col.dia))+' · '+col.placa+' prog. '+(col.horaProg||'—') };
+  }
+  if (outra.length) return { c:'wa', t:'Programada também '+curto(outra[0].dia)+' em '+outra[0].placa+' — não lida no inventário' };
+  if (dispensaColeta(r)) return { c:'wa', t:'Estoque/base — não lida no inventário' };
+  return { c:'bad', t:'Não localizada — sem coleta e sem leitura no inventário' };
+}
+
+const HID_KEY = 'painelSituacional_ocultos_v1';
+S.hid = Object.assign({ placas:[], msgs:[] }, lsGet(HID_KEY) || {});
+const msgKey = v => norm(v.turno || '') || '(sem mensagem)';
+const isHid = v => S.hid.placas.includes(v.placa) || S.hid.msgs.includes(msgKey(v));
+function salvarHid(){ lsSet(HID_KEY, S.hid); render(); }
+function hidPlaca(p, ev){ if (ev) ev.stopPropagation(); const i = S.hid.placas.indexOf(p); i >= 0 ? S.hid.placas.splice(i,1) : S.hid.placas.push(p); salvarHid(); }
+function hidMsg(k){ const i = S.hid.msgs.indexOf(k); i >= 0 ? S.hid.msgs.splice(i,1) : S.hid.msgs.push(k); salvarHid(); }
+function reexibirTodos(){ S.hid = { placas:[], msgs:[] }; salvarHid(); }
+function msgKeyAttr(k){ return esc(k).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+/* ordem / carrega manuais — compartilhados via Firestore (coleção painel_alinhamento, 1 doc por dia) */
+S.alin = {}; S.alinUnsub = {};
+const alinId = dia => dia.replace(/\//g,'-');
+function subAlin(dia){
+  if (S.alinUnsub[dia]) return;
+  S.alin[dia] = S.alin[dia] || lsGet('ps_alin_'+alinId(dia)) || {};
+  S.alinUnsub[dia] = fs.collection('painel_alinhamento').doc(alinId(dia)).onSnapshot(d => {
+    S.alin[dia] = d.exists ? d.data() : {}; S.alinOk = true; lsSet('ps_alin_'+alinId(dia), S.alin[dia]); render();
+  }, err => { console.warn('painel_alinhamento', err); S.alinOk = false; render(); });
+}
+async function setAlin(dia, campo, placa, valor){
+  const cur = S.alin[dia] = S.alin[dia] || {};
+  cur[campo] = Object.assign({}, cur[campo], { [placa]: valor });
+  lsSet('ps_alin_'+alinId(dia), cur);
+  try {
+    await fs.collection('painel_alinhamento').doc(alinId(dia)).set({ [campo]: { [placa]: valor }, atualizadoEm: firebase.firestore.FieldValue.serverTimestamp(), atualizadoPor: (auth.currentUser && auth.currentUser.email) || '' }, { merge: true });
+  } catch(e) { console.warn('salvar alinhamento', e); S.alinOk = false; }
+  render();
+}
+function sugCarrega(turno){ const t = norm(turno); if (/carrega hoje/.test(t)) return 'HOJE'; if (/carrega (dia seguinte|amanha)/.test(t)) return 'AMANHÃ'; return ''; }
+function blurAin(){ if (S.pendRender) { S.pendRender = false; setTimeout(render, 50); } }
+
+function viewD1(){
+  const fut = diasOk().filter(d => cmpD(d, S.ref) > 0);
+  if (!fut.length) return '<div class="empty">Ainda não existe aba para o dia seguinte a '+esc(S.ref)+'.</div>';
+  const D1 = (S.d1 && fut.includes(S.d1)) ? S.d1 : fut[0];
+  const nav = fut.slice(0,4).map(d => '<button class="fbtn'+(d===D1?' on':'')+'" onclick="S.d1=\''+d+'\';render()">'+esc(d)+' · '+SEMANA[parseD(d).getDay()]+'</button>').join('');
+  return viewAlinh(D1, nav, false);
+}
+function viewHoje(){ return viewAlinh(S.ref, '<span class="pill p-info" style="font-size:14px;padding:5px 12px">'+esc(S.ref)+' · '+SEMANA[parseD(S.ref).getDay()]+'</span>', true); }
+
+function viewAlinh(D1, nav, ehHoje){
+  const day = S.days[D1];
+  const todos = Object.values(day.vehicles).filter(v => v.rows.length).map(v => {
+    const ent = v.rows.filter(isSaida), col = v.rows.filter(isColeta);
+    const locs = ent.map(r => ({ r, l: localizar(r, D1) }));
+    const ordem = (String(v.turno).match(/(\d+)\s*[º°o]\b/) || [])[1];
+    const AL = S.alin[D1] || {}; const oMan = (AL.ordem||{})[v.placa]; const cMan = (AL.carrega||{})[v.placa] || '';
+    const colEx = col.filter(r => S.A.execInfo(r).ok).length;
+    return { v, ent, col, locs, colEx, se: somar(ent), sc: somar(col), pe: horaMin(ent), pc: horaMin(col), lib: v.rows.filter(precisaLiberacao).length, ordemMsg: ordem ? +ordem : null, oMan: oMan ? +oMan : null, ordem: oMan ? +oMan : (ordem ? +ordem : null), cMan, cSug: sugCarrega(v.turno), carrega: cMan || sugCarrega(v.turno) };
+  }).sort((a,b) => (a.ordem||99) - (b.ordem||99) || (a.pe||a.pc||'99').padStart(5,'0').localeCompare((b.pe||b.pc||'99').padStart(5,'0')));
+  subAlin(D1);
+  const fc = S.filtroCarrega || '';
+  const veics = todos.filter(x => !isHid(x.v) && (!fc || (fc === '-' ? !x.carrega : x.carrega === fc))), ocultos = todos.filter(x => isHid(x.v));
+  const TE = somar(veics.flatMap(x => x.ent)), TC = somar(veics.flatMap(x => x.col));
+  const allLocs = veics.flatMap(x => x.locs);
+  const cnt = c => allLocs.filter(x => x.l.c === c).length;
+  const colExT = veics.reduce((s,x) => s + x.colEx, 0);
+  const tag = ehHoje ? 'hoje' : 'd1';
+  let h = '<div class="toolbar">'+nav+
+    '<button class="fbtn'+(S.msgPanel?' on':'')+'" onclick="S.msgPanel=!S.msgPanel;render()">🧹 Filtrar por mensagem'+(S.hid.msgs.length?' ('+S.hid.msgs.length+' oculta'+(S.hid.msgs.length>1?'s':'')+')':'')+'</button>'+
+    '<span class="muted small" style="margin-left:6px">Carrega:</span>'+[['','Todos'],['HOJE','Hoje'],['AMANHÃ','Amanhã'],['-','Sem definição']].map(([k,l]) => '<button class="fbtn'+((S.filtroCarrega||'')===k?' on':'')+'" onclick="S.filtroCarrega=\''+k+'\';render()">'+l+' ('+todos.filter(x => !isHid(x.v) && (!k || (k==='-' ? !x.carrega : x.carrega===k))).length+')</button>').join('')+
+    '<button class="fbtn" onclick="S.d1Open=new Set(\'*\');render()">Abrir todos</button><button class="fbtn" onclick="S.d1Open=new Set();render()">Fechar todos</button><button class="fbtn" onclick="window.print()">🖨 Imprimir</button>'+(S.alinOk===false?'<span class="pill p-warn">ordem/carrega salvos só neste navegador</span>':'')+'</div>';
+  if (S.msgPanel) {
+    const g = {}; todos.forEach(x => { const k = msgKey(x.v); (g[k] = g[k] || { k, txt: x.v.turno || '(sem mensagem)', n:0 }).n++; });
+    h += '<div class="msgpanel"><div class="muted small" style="margin-bottom:6px">Clique numa mensagem para ocultar/mostrar todos os veículos com ela. Fica salvo neste navegador (vale para Hoje e D+1).</div>'+
+      Object.values(g).sort((a,b) => a.txt.localeCompare(b.txt)).map(m => { const off = S.hid.msgs.includes(m.k);
+        return '<button class="mchip'+(off?' off':'')+'" onclick="hidMsg(\''+msgKeyAttr(m.k)+'\')">'+(off?'🚫 ':'✓ ')+esc(m.txt.toUpperCase())+' <b>'+m.n+'</b></button>'; }).join('')+'</div>';
+  }
+  h += '<div class="kpis">'+
+    kpi('o','Entregas '+curto(D1), TE.qt, fmtN(TE.peso)+' kg · '+fmtN(TE.vol)+' vol · R$ '+fmtN(TE.valor), null, tag)+
+    kpi('g','Coletas '+curto(D1), TC.qt, (ehHoje ? colExT+' executadas · ' : '')+fmtN(TC.peso)+' kg · '+fmtN(TC.vol)+' vol', ehHoje && TC.qt ? Math.round(colExT*100/TC.qt) : null, tag)+
+    (ehHoje ? kpi('b','Já carregadas / saíram', cnt('dn'), 'de '+allLocs.length+' NFs de saída', allLocs.length ? Math.round(cnt('dn')*100/allLocs.length) : 0, tag) : '')+
+    kpi('g', ehHoje ? 'Aguardando, no armazém' : 'No armazém', cnt('ok'), 'de '+allLocs.length+' NFs de saída', ehHoje ? null : (allLocs.length ? Math.round(cnt('ok')*100/allLocs.length) : 0), tag)+
+    kpi('','A caminho / em coleta', cnt('tr') + cnt('wa'), cnt('tr')+' em trânsito/coleta · '+cnt('wa')+' com atenção', null, tag)+
+    kpi(cnt('bad')?'r':'g','Não localizadas', cnt('bad'), 'sem coleta, sem leitura ou já saíram', null, tag)+'</div>';
+  const open = S.d1Open || new Set();
+  h += '<div class="tbl-wrap d1"><table><thead>'+
+    '<tr><th rowspan="2"></th><th rowspan="2">Placa</th><th rowspan="2">Motorista</th><th rowspan="2" style="text-align:center">Mensagens</th><th class="armh" rowspan="2">Ordem</th><th class="armh" rowspan="2">Carrega</th>'+
+    '<th class="ent" rowspan="2">PROG</th><th class="ent" colspan="4">ENTREGAS</th>'+
+    '<th class="col" rowspan="2">PROG</th><th class="col" colspan="'+(ehHoje?5:4)+'">COLETAS</th>'+
+    '<th class="armh" rowspan="2">MERCADORIA × ARMAZÉM</th><th class="armh" rowspan="2">LIBERAÇÃO</th></tr>'+
+    '<tr><th class="ent2">QT</th><th class="ent2">PESO</th><th class="ent2">VOL</th><th class="ent2">VALOR R$</th><th class="col2">QT</th>'+(ehHoje?'<th class="col2">FEITAS</th>':'')+'<th class="col2">PESO</th><th class="col2">VOL</th><th class="col2">VALOR R$</th></tr></thead><tbody>';
+  const ORD = ['bad','wa','tr','gr','ok','dn'];
+  veics.forEach(x => {
+    const v = x.v, n = x.locs.length;
+    const k = c => x.locs.filter(y => y.l.c === c).length;
+    const seg = c => n && k(c) ? '<i class="c-'+c+'" style="width:'+(k(c)*100/n)+'%"></i>' : '';
+    let resumo = '';
+    if (!n) resumo = '<span class="muted small">sem entregas</span>';
+    else if (k('dn') === n) resumo = '<span class="loc dn">🚚 tudo carregado ('+n+')</span>';
+    else if (k('ok') + k('dn') === n) resumo = '<span class="loc ok">✅ tudo no armazém ('+n+')</span>'+(k('dn')?' <span class="loc dn">'+k('dn')+' carregada'+(k('dn')>1?'s':'')+'</span>':'');
+    else resumo = [k('dn')?'<span class="loc dn">'+k('dn')+' carregada'+(k('dn')>1?'s':'')+'</span>':'', k('ok')?'<span class="loc ok">'+k('ok')+' armazém</span>':'', k('tr')?'<span class="loc tr">'+k('tr')+' a caminho</span>':'', k('wa')?'<span class="loc wa">'+k('wa')+' atenção</span>':'', k('bad')?'<span class="loc bad">'+k('bad')+' não localizada'+(k('bad')>1?'s':'')+'</span>':'', k('gr')?'<span class="loc gr">'+k('gr')+' sem NF</span>':''].filter(Boolean).join(' ');
+    const id = v.placa, aberto = open.has('*') || open.has(id);
+    h += '<tr class="vrow2" onclick="toggleD1(\''+id+'\')"><td><button class="xbtn" title="Ocultar este veículo do quadro" onclick="hidPlaca(\''+id+'\',event)">✕</button></td><td><span class="plate sm">'+esc(v.placaTxt||v.placa)+'</span></td><td><b>'+esc((v.motorista||'').toUpperCase())+'</b></td>'+
+      '<td class="msg">'+esc((v.turno||'').toUpperCase())+(v.obs?'<br><span class="muted">🔧 '+esc(v.obs)+'</span>':'')+'</td>'+
+      '<td class="prog" onclick="event.stopPropagation()"><input class="ain ord" type="number" min="1" max="99" value="'+(x.oMan||'')+'" placeholder="'+(x.ordemMsg?x.ordemMsg+'º':'—')+'" title="Ordem de carregamento (manual)'+(x.ordemMsg?' — mensagem diz '+x.ordemMsg+'º':'')+'" onchange="setAlin(\''+D1+'\',\'ordem\',\''+id+'\',this.value)" onblur="blurAin()"></td>'+
+      '<td onclick="event.stopPropagation()"><select class="ain car car-'+(x.carrega==='HOJE'?'h':x.carrega==='AMANHÃ'?'a':'n')+(x.cMan?'':' sug')+'" title="'+(x.cMan?'Definido manualmente':x.cSug?'Sugestão pela mensagem — escolha para confirmar':'Não definido')+'" onchange="setAlin(\''+D1+'\',\'carrega\',\''+id+'\',this.value)" onblur="blurAin()">'+
+        '<option value=""'+(x.cMan?'':' selected')+'>'+(x.cSug?x.cSug+' (msg)':'—')+'</option><option value="HOJE"'+(x.cMan==='HOJE'?' selected':'')+'>HOJE</option><option value="AMANHÃ"'+(x.cMan==='AMANHÃ'?' selected':'')+'>AMANHÃ</option></select></td>'+
+      '<td class="prog" style="background:#eaf1ff">'+esc(x.pe)+'</td><td class="n">'+(x.se.qt||'')+'</td><td class="n">'+fmtN(x.se.peso)+'</td><td class="n">'+fmtN(x.se.vol)+'</td><td class="n sep">'+fmtN(x.se.valor)+'</td>'+
+      '<td class="prog" style="background:#fff7d1">'+esc(x.pc)+'</td><td class="n">'+(x.sc.qt||'')+'</td>'+(ehHoje?'<td class="n">'+(x.sc.qt?(x.colEx===x.sc.qt?'<span class="pill p-ok">'+x.colEx+'/'+x.sc.qt+'</span>':x.colEx+'/'+x.sc.qt):'')+'</td>':'')+'<td class="n">'+fmtN(x.sc.peso)+'</td><td class="n">'+fmtN(x.sc.vol)+'</td><td class="n sep">'+fmtN(x.sc.valor)+'</td>'+
+      '<td><div class="arm"><div class="armbar">'+ORD.slice().reverse().map(seg).join('')+'</div><div>'+resumo+'</div></div></td>'+
+      '<td>'+(x.lib?'<span class="pill p-warn">'+x.lib+' pendente'+(x.lib>1?'s':'')+'</span>':(n?'<span class="pill p-ok">ok</span>':''))+'</td></tr>';
+    if (aberto && (x.locs.length || x.col.length)) {
+      h += '<tr class="det"><td colspan="'+(ehHoje?19:18)+'"><table><thead><tr><th>Tipo</th><th>Cliente</th><th>NF</th><th>Destinatário</th><th>Cidade</th><th>Vol</th><th>Prog.</th><th>Status / MD</th><th>Onde está a mercadoria</th></tr></thead><tbody>'+
+        x.locs.slice().sort((a,b) => ORD.indexOf(a.l.c) - ORD.indexOf(b.l.c)).map(y => { const r = y.r;
+          return '<tr><td class="small">'+esc(r.tipo)+'</td><td class="small">'+esc(cut(r.op,55))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,34))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td>'+esc(r.horaProg)+'</td>'+
+            '<td class="small">'+(precisaLiberacao(r)?'<span class="pill p-warn">'+esc(r.status||'sem MD')+'</span>':esc(r.status||''))+'</td><td><span class="loc '+y.l.c+'">'+esc(y.l.t)+'</span></td></tr>'; }).join('')+
+        x.col.map(r => { const ex = S.A.execInfo(r);
+          return '<tr><td class="small">COLETA</td><td class="small">'+esc(cut(r.op,55))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,34))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td>'+esc(r.horaProg)+'</td><td class="small">'+esc(r.status||'')+'</td><td>'+(ex.ok?'<span class="loc ok">✓ coletada '+esc(ex.hora||'')+(ex.src==='conferência'?' (conferência)':'')+'</span>':'<span class="muted small">coleta do dia — pendente</span>')+'</td></tr>'; }).join('')+
+        '</tbody></table></td></tr>';
+    }
+  });
+  if (!veics.length) h += '<tr><td colspan="19" class="muted" style="text-align:center;padding:18px">Todos os veículos estão ocultos.</td></tr>';
+  h += '<tr class="tot"><td></td><td colspan="5">TOTAL '+esc(D1)+' · '+veics.length+' veículos'+(ocultos.length?' <span class="muted small" style="font-weight:500">(+'+ocultos.length+' ocultos)</span>':'')+'</td><td></td>'+
+    '<td class="n">'+TE.qt+'</td><td class="n">'+fmtN(TE.peso)+'</td><td class="n">'+fmtN(TE.vol)+'</td><td class="n sep">'+fmtN(TE.valor)+'</td><td></td><td class="n">'+TC.qt+'</td>'+(ehHoje?'<td class="n">'+colExT+'/'+TC.qt+'</td>':'')+'<td class="n">'+fmtN(TC.peso)+'</td><td class="n">'+fmtN(TC.vol)+'</td><td class="n sep">'+fmtN(TC.valor)+'</td>'+
+    '<td>'+(ehHoje?cnt('dn')+' carregadas · ':'')+cnt('ok')+' de '+allLocs.length+' no armazém</td><td></td></tr>';
+  h += '</tbody></table></div>';
+  if (ocultos.length) h += '<div class="hidbox"><b>Ocultos ('+ocultos.length+'):</b> '+ocultos.map(x => {
+      const porMsg = !S.hid.placas.includes(x.v.placa);
+      return '<button class="mchip off" title="'+(porMsg?'Oculto pela mensagem: '+esc(x.v.turno):'Clique para mostrar de novo')+'" onclick="'+(porMsg?'hidMsg(\''+msgKeyAttr(msgKey(x.v))+'\')':'hidPlaca(\''+x.v.placa+'\')')+'"><span class="plate sm">'+esc(x.v.placa)+'</span> '+esc((x.v.motorista||'').toUpperCase())+(porMsg?' · msg':'')+'</button>'; }).join('')+
+    ' <button class="fbtn" onclick="reexibirTodos()">Mostrar todos</button></div>';
+  h += '<div class="muted small" style="margin-top:8px">✕ oculta o veículo; "Filtrar por mensagem" oculta em grupo. Clique no veículo para ver NF a NF. '+(ehHoje?'"Carregada" = hora na coluna K ou saída conferida na Conferência Geral. ':'')+'"No armazém" = lida no inventário desde '+esc(diaAnterior(D1))+' ou descarga conferida. "A caminho" = coleta programada ou coletada sem descarga/leitura. Ordem e Carrega: preencha manualmente (fica salvo para todos); em branco usa o que a mensagem diz (em itálico).</div>';
+  return h;
+}
+function toggleD1(id){ S.d1Open = S.d1Open || new Set(); if (S.d1Open.has('*')) S.d1Open = new Set(); S.d1Open.has(id) ? S.d1Open.delete(id) : S.d1Open.add(id); render(); }
+
+/* ---------- BUSCA ---------- */
+function viewBusca(){
+  const q = norm(S.busca); const qk = nfKeys(S.busca)[0];
+  const all = []; diasOk().forEach(d => S.days[d].rows.forEach(r => all.push(r)));
+  const hit = all.filter(r => (qk && r.keys.includes(qk)) || norm([r.placaTxt, r.op, r.dest, r.nf, r.motorista, r.cidade].join(' ')).includes(q));
+  if (!hit.length) return '<div class="empty">Nada encontrado para "'+esc(S.busca)+'" nas '+diasOk().length+' abas lidas.</div>';
+  return '<div class="sec-title"><h2>Busca: '+esc(S.busca)+'</h2><span class="hint">'+hit.length+' linhas · clique na NF para ver a trajetória</span></div>'+
+    tabela(['Dia','Placa','Tipo','Cliente','NF','Destinatário','Cidade','Executada'], hit.sort((a,b)=>cmpD(a.dia,b.dia)||a.i-b.i), r =>
+      '<td>'+curto(r.dia)+'</td><td><span class="plate sm">'+esc(r.placa)+'</span></td><td class="small">'+esc(r.tipo)+'</td><td class="small">'+esc(cut(r.op,60))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,40))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+(r.exec?'<span class="pill p-ok">✓ '+esc(r.finalizou)+'</span>':'<span class="pill p-gray">—</span>')+'</td>', true);
+}
+
+/* ---------- helpers de tabela ---------- */
+function cut(s,n){ s = String(s||''); return s.length > n ? s.slice(0,n-1)+'…' : s; }
+function nfTd(r){ return '<td class="nf" onclick="abrirCarga(\''+esc(r.keys[0]||'')+'\')">'+esc(cut(nfLabel(r),28))+'</td>'; }
+function groupBy(rs){ return rs.slice().sort((a,b) => (a.placa<b.placa?-1:a.placa>b.placa?1:0) || a.i-b.i).map((r,i,arr) => (i===0 || arr[i-1].placa !== r.placa) ? Object.assign({}, r, {_grp:true}) : r); }
+function tabela(cols, rows, fn, semGrupo){
+  if (!rows.length) return '<div class="empty">Nada para mostrar com este filtro.</div>';
+  let h = '<div class="tbl-wrap"><table><thead><tr>'+cols.map(c => '<th>'+c+'</th>').join('')+'</tr></thead><tbody>';
+  rows.forEach(r => {
+    if (r._grp && !semGrupo) {
+      const V = S.days[r.dia] && S.days[r.dia].vehicles[r.placa];
+      h += '<tr class="grp"><td colspan="'+cols.length+'">'+esc(r.placaTxt||r.placa)+' · '+esc(r.motorista||'')+(V&&V.turno?' <span class="muted small" style="font-family:Inter;font-weight:500">· '+esc(V.turno)+'</span>':'')+'</td></tr>';
+    }
+    h += '<tr>'+fn(r)+'</tr>';
+  });
+  return h + '</tbody></table></div>';
+}
+
+/* ---------- TRAJETÓRIA DE UMA CARGA ---------- */
+function abrirCarga(key){
+  if (!key) return;
+  const all = []; diasOk().forEach(d => S.days[d].rows.forEach(r => { if (r.keys.includes(key)) all.push(r); }));
+  const base = all[0];
+  const linhas = base ? [base, ...S.A.rel(base)] : all;
+  const evs = [];
+  linhas.forEach(r => evs.push({ t: startOfDay(r.dia) + (r.i||0), cls: isColeta(r)?'col':isSaida(r)?'sai':'', html:
+    '<b>'+esc(r.dia)+' · '+esc(r.tipo)+' · <span class="plate sm">'+esc(r.placa)+'</span> '+esc(r.motorista||'')+'</b>'+
+    '<div>'+esc(cut(r.op,120))+'</div><div>NF '+esc(r.nf||'—')+' · '+esc(r.dest)+' · '+esc(r.cidade)+' · vol '+esc(r.vol)+'</div>'+
+    '<div>Prog. '+esc(r.horaProg||'—')+' · chegada '+esc(r.chegada||'—')+' · finalizou <b>'+esc(r.finalizou||'—')+'</b> · status '+esc(r.status||'—')+' · resp. '+esc(r.resp||'—')+'</div>' }));
+  const ks = new Set(linhas.flatMap(r => r.keys));
+  S.ops.forEach(o => (o.nfs||[]).forEach(n => { if (nfKeys(n.nf, n.di).some(k => ks.has(k))) {
+    const t = tsMs(o.timestamp);
+    evs.push({ t: t || startOfDay(o.dataRef), cls:'conf', html:'<b>📋 Conferência '+esc(o.tipoExecucao)+' · '+esc(o.dataRef)+' '+(t?hhmm(new Date(t)):'')+' · <span class="plate sm">'+esc(o.placa)+'</span></b><div>NF '+esc(n.nf)+' · '+esc(n.status)+' · '+esc(o.conferenteNome||'')+(n.observacao?' · '+esc(n.observacao):'')+'</div>' });
+  }}));
+  S.inv.forEach(i => { if (nfKeys(i.nf).some(k => ks.has(k))) evs.push({ t:Number(i.ts), cls:'inv', html:'<b>🔍 Inventário · '+fmtD(new Date(Number(i.ts)))+' '+hhmm(new Date(Number(i.ts)))+'</b><div>'+esc(i.cliente||'')+' · end. '+esc(i.end||'—')+' · '+esc(i.vol||'')+' vol · '+esc(i.operador||'')+(i.obs?' · '+esc(i.obs):'')+'</div>' }); });
+  evs.sort((a,b) => a.t - b.t);
+  modal('<button class="close" onclick="fecharModal()">✕</button><h2>Trajetória · NF '+esc(base ? nfLabel(base) : key)+'</h2>'+
+    '<div class="muted small" style="margin-bottom:12px">Linhas da Programação com a mesma NF/DI ('+diasOk().length+' abas lidas), conferências e leituras do inventário (últimos 4 dias).</div>'+
+    '<div class="tl">'+evs.map(e => '<div class="ev '+e.cls+'">'+e.html+'</div>').join('')+'</div>');
+}
+function modal(html){ $('#modal-root').innerHTML = '<div class="modal-bg" onclick="if(event.target===this)fecharModal()"><div class="modal">'+html+'</div></div>'; }
+function fecharModal(){ $('#modal-root').innerHTML = ''; }
+
+/* ---------- CONFIGURAÇÕES ---------- */
+function abrirCfg(){
+  modal('<button class="close" onclick="fecharModal()">✕</button><h2>⚙ Configurações</h2>'+
+    '<div class="small muted">Planilha em uso: <b>'+esc(S.sheetId)+'</b><br>Fonte: '+esc(S.sheetFonte)+'</div>'+
+    '<label class="f">Planilha de Programação (link ou ID) — deixe vazio para usar a mesma configurada na Conferência Geral</label>'+
+    '<input class="i" id="cf-sheet" value="'+esc(CFG.sheetManual)+'" placeholder="https://docs.google.com/spreadsheets/d/…">'+
+    '<div class="row2"><div><label class="f">Dias para trás (procura coletas)</label><input class="i" id="cf-back" type="number" min="1" max="30" value="'+CFG.diasAtras+'"></div>'+
+    '<div><label class="f">Dias para frente (agendamentos)</label><input class="i" id="cf-fwd" type="number" min="1" max="30" value="'+CFG.diasFrente+'"></div></div>'+
+    '<label class="f">Atualização automática (minutos)</label><input class="i" id="cf-ref" type="number" min="1" max="30" value="'+CFG.refreshMin+'">'+
+    '<label class="f">Termos que dispensam coleta (saídas de estoque/base — separados por vírgula)</label><textarea class="i" id="cf-disp" rows="2">'+esc(CFG.dispensa)+'</textarea>'+
+    '<div style="display:flex;gap:8px;margin-top:16px"><button class="btn o" onclick="salvarCfg()">Salvar e recarregar</button><button class="btn g" onclick="auth.signOut()">Sair ('+esc(auth.currentUser&&auth.currentUser.email||'')+')</button></div>'+
+    '<div class="small muted" style="margin-top:10px">Configuração salva neste navegador. Para trocar a planilha de todos os sistemas de uma vez, troque no Admin da Conferência Geral (Configurações) e deixe o campo acima vazio.</div>');
+}
+async function salvarCfg(){
+  CFG.sheetManual = $('#cf-sheet').value.trim();
+  CFG.diasAtras = Math.max(1, Math.min(30, +$('#cf-back').value || 10));
+  CFG.diasFrente = Math.max(1, Math.min(30, +$('#cf-fwd').value || 10));
+  CFG.refreshMin = Math.max(1, Math.min(30, +$('#cf-ref').value || 2));
+  CFG.dispensa = $('#cf-disp').value;
+  lsSet(CFG_KEY, CFG); fecharModal();
+  const old = S.sheetId; await resolveSheet();
+  if (old !== S.sheetId) { S.days = {}; S.fallbackSig = null; }
+  agendarRefresh(); loadAll(true);
+}
+
+/* ---------- NAVEGAÇÃO ---------- */
+function goTab(t, f){ S.tab = t; if (f) S.filtro[t] = f; S.filtroVeic = null; S.busca = ''; $('#q').value = '';
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t)); render(); window.scrollTo(0,0); }
+function setF(t, f){ S.filtro[t] = f; render(); }
+function filtroVeic(placa, dia){ S.filtroVeic = { placa, dia }; S.filtro.col = 'todas'; S.tab = 'col';
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === 'col')); render(); }
+function mudarDia(n){ S.ref = n === 0 ? fmtD(new Date()) : addD(S.ref, n); S.filtroVeic = null; render(); loadAll(false); }
+
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => goTab(b.dataset.t));
+$('#d-prev').onclick = () => mudarDia(-1);
+$('#d-next').onclick = () => mudarDia(1);
+$('#d-today').onclick = () => mudarDia(0);
+$('#btn-reload').onclick = () => loadAll(true);
+$('#btn-cfg').onclick = abrirCfg;
+let _qt; $('#q').oninput = e => { clearTimeout(_qt); _qt = setTimeout(() => { S.busca = e.target.value.trim(); render(); }, 250); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharModal(); });
+
+let _timer;
+function agendarRefresh(){ clearInterval(_timer); _timer = setInterval(() => { if (!document.hidden) loadAll(false); }, CFG.refreshMin*60000); }
+
+/* ---------- LOGIN ---------- */
+$('#lg-btn').onclick = async () => {
+  $('#lg-err').textContent = '';
+  try { await auth.signInWithEmailAndPassword($('#lg-email').value.trim(), $('#lg-senha').value); }
+  catch(e) { $('#lg-err').textContent = 'Não foi possível entrar: ' + (e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' ? 'e-mail ou senha inválidos' : e.message); }
+};
+$('#lg-senha').addEventListener('keydown', e => { if (e.key === 'Enter') $('#lg-btn').click(); });
+
+auth.onAuthStateChanged(async u => {
+  if (!u) { $('#login').classList.remove('hidden'); if (S.opsUnsub) { S.opsUnsub(); S.opsUnsub = null; S.opsDias=''; } return; }
+  $('#login').classList.add('hidden');
+  await resolveSheet();
+  subscribeInv();
+  agendarRefresh();
+  loadAll(true);
+});
+render();
+</script>
+</body>
+</html>
