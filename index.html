@@ -203,7 +203,7 @@ input.i,textarea.i,select.i{width:100%;padding:9px 10px;border:1px solid var(--l
 /* ============================================================
    CONFIGURAÇÃO
    ============================================================ */
-const APP_VERSION = '2026.11.11-1';
+const APP_VERSION = '2026.11.12-1';
 
 // Conferência Geral (Firestore + Auth) — mesmo projeto do conferente.html
 const FB_CONF = {
@@ -323,6 +323,13 @@ function tipoDe(op){
   if (/^devol/.test(s)) return 'DEVOLUCAO';
   if (/^transf/.test(s)) return 'TRANSFERENCIA';
   return 'OUTRO';
+}
+// Status (col T): OK = feito · em definição = aguardando alocação · em rota = no veículo executando · demais = como escrito
+function stClass(s){ const t = norm(s); if (!t) return ''; if (/^ok\b/.test(t)) return 'ok'; if (/em defini/.test(t)) return 'def'; if (/em rota/.test(t)) return 'rota'; return 'outro'; }
+function stPill(r){
+  if (!r.status) return '';
+  const m = { ok:['p-ok','OK'], def:['p-gray','em definição'], rota:['p-info','🚚 em rota'] }[r.st];
+  return m ? '<span class="pill '+m[0]+'">'+m[1]+'</span>' : '<span class="pill p-warn" title="Status escrito na planilha">'+esc(cut(r.status,30))+'</span>';
 }
 const isSaida = r => r.tipo === 'EMBARQUE' || r.tipo === 'ENTREGA' || r.tipo === 'DEVOLUCAO';
 const isColeta = r => r.tipo === 'COLETA';
@@ -452,7 +459,15 @@ function parseDay(dia, linhas){
     row.destW = firstWord(row.dest);
     row.cliW = clienteDe(op);
     row.exec = !!row.finalizou && row.finalizou !== '-';
+    row.st = stClass(row.status);
     V.rows.push(row); rows.push(row);
+  });
+  // Sequência: entrega de cima para baixo (linhas da planilha); carregamento de baixo para cima.
+  Object.values(vehicles).forEach(V => {
+    const sai = V.rows.filter(isSaida); let parada = 0, prev = '';
+    sai.forEach(r => { const k = norm(r.dest)+'|'+norm(r.cidade); if (!parada || k !== prev) parada++; prev = k; r.seqEnt = parada; });
+    sai.forEach(r => { r.nParadas = parada; r.seqCar = parada - r.seqEnt + 1; });
+    V.rows.filter(isColeta).forEach((r, i) => r.seqCol = i + 1);
   });
   return { rows, vehicles };
 }
@@ -587,9 +602,11 @@ function analisar(){
   // status de execução: planilha (col K) ou Conferência Geral
   const execInfo = r => {
     if (r.exec) return { ok:true, src:'planilha', hora:r.finalizou };
+    if (r.st === 'ok') return { ok:true, src:'status OK', hora:'OK' };
     const tipoConf = isColeta(r) ? 'ENTRADA' : 'SAIDA';
     const c = confDe(r).find(c => c.dia === r.dia && c.tipo === tipoConf && plates(c.placa).some(p => r.placas.includes(p)));
     if (c) return { ok:true, src:'conferência', hora:c.hora, quem:c.quem, st:c.status };
+    if (r.st === 'rota') return { ok:false, rota:true };
     return { ok:false };
   };
 
@@ -678,7 +695,7 @@ function analisar(){
   V.forEach(v => {
     v._ops = opsDoVeiculo(v, R);
     const ex = v.rows.map(r => r._ex || execInfo(r));
-    v._feitos = ex.filter(e => e.ok).length; v._total = v.rows.length;
+    v._feitos = ex.filter(e => e.ok).length; v._rota = ex.filter(e => e.rota).length; v._total = v.rows.length;
     v._alerts = alerts.filter(a => a.linhas.some(l => l.dia === R && l.placa === v.placa)).length;
   });
 
@@ -719,6 +736,7 @@ function rodape(){
 }
 
 function exPill(e){
+  if (e && e.rota) return '<span class="pill p-info">🚚 em rota</span>';
   if (!e || !e.ok) return '<span class="pill p-gray">pendente</span>';
   const nok = e.st === 'NAO_OK' ? ' <span class="pill p-bad">NÃO OK</span>' : '';
   return '<span class="pill p-ok" title="'+esc(e.src+(e.quem?' · '+e.quem:''))+'">✓ '+esc(e.hora||'')+(e.src==='conferência'?' 📋':'')+'</span>'+nok;
@@ -762,7 +780,7 @@ function vcard(v){
   const A = S.A;
   const col = v.rows.filter(isColeta), sai = v.rows.filter(isSaida), outros = v.rows.filter(r => !isColeta(r) && !isSaida(r));
   const pct = v._total ? Math.round(v._feitos*100/v._total) : 0;
-  let st = v._total && v._feitos === v._total ? '<span class="pill p-ok">Concluído</span>' : v._feitos ? '<span class="pill p-warn">Em execução '+v._feitos+'/'+v._total+'</span>' : '<span class="pill p-gray">Aguardando</span>';
+  let st = v._total && v._feitos === v._total ? '<span class="pill p-ok">Concluído</span>' : (v._feitos || v._rota) ? '<span class="pill p-warn">'+(v._rota?'🚚 Em rota · ':'Em execução ')+v._feitos+'/'+v._total+'</span>' : '<span class="pill p-gray">Aguardando</span>';
   if (!v._total) st = '<span class="pill p-gray">'+(v.obs?'Manutenção':'Sem cargas')+'</span>';
   // conferência
   const opsE = v._ops.filter(o => o.tipoExecucao === 'ENTRADA'), opsS = v._ops.filter(o => o.tipoExecucao === 'SAIDA');
@@ -810,8 +828,8 @@ function viewCol(){
   let h = '<div class="toolbar">'+[['todas','Todas'],['pend','Faltam'],['exec','Executadas'],['outro','Vão p/ outro veículo'],['semdest','⚠ Sem saída programada']].map(([k,l]) =>
     '<button class="fbtn'+(f===k?' on':'')+'" onclick="setF(\'col\',\''+k+'\')">'+l+' ('+n(k)+')</button>').join('')+
     (S.filtroVeic ? '<button class="fbtn on" onclick="S.filtroVeic=null;render()">destino '+esc(S.filtroVeic.placa)+' '+curto(S.filtroVeic.dia)+' ✕</button>' : '')+'</div>';
-  h += tabela(['Placa','Cliente / coleta','NF','Destinatário','Cidade','Vol','Prog.','Executada','Vai para'], groupBy(rs), r =>
-    '<td><span class="plate sm">'+esc(r.placa)+'</span></td><td class="small">'+esc(cut(r.op,70))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,40))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td>'+esc(r.horaProg)+'</td><td>'+exPill(r._ex)+'</td><td>'+chipDest(r._dest, A.R)+'</td>');
+  h += tabela(['Seq.','Placa','Cliente / coleta','NF','Destinatário','Cidade','Vol','Prog.','Status (T)','Executada','Vai para'], groupBy(rs), r =>
+    '<td class="prog">'+(r.seqCol||'')+'</td><td><span class="plate sm">'+esc(r.placa)+'</span></td><td class="small">'+esc(cut(r.op,70))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,40))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td>'+esc(r.horaProg)+'</td><td>'+stPill(r)+'</td><td>'+exPill(r._ex)+'</td><td>'+chipDest(r._dest, A.R)+'</td>');
   return h;
 }
 /* ---------- SAÍDAS ---------- */
@@ -822,11 +840,13 @@ function viewSai(){
   if (f === 'pend') rs = rs.filter(s => !s._ex.ok);
   if (f === 'exec') rs = rs.filter(s => s._ex.ok);
   if (f === 'semcol') rs = rs.filter(semc);
-  const n = k => ({todas:A.saidas.length, pend:A.saidas.filter(s=>!s._ex.ok).length, exec:A.saidas.filter(s=>s._ex.ok).length, semcol:A.saidas.filter(semc).length}[k]);
-  let h = '<div class="toolbar">'+[['todas','Todas'],['pend','Faltam'],['exec','Executadas'],['semcol','⚠ Sem coleta']].map(([k,l]) =>
+  if (f === 'rota') rs = rs.filter(s => s.st === 'rota');
+  if (f === 'def') rs = rs.filter(s => s.st === 'def');
+  const n = k => ({todas:A.saidas.length, pend:A.saidas.filter(s=>!s._ex.ok).length, exec:A.saidas.filter(s=>s._ex.ok).length, semcol:A.saidas.filter(semc).length, rota:A.saidas.filter(s=>s.st==='rota').length, def:A.saidas.filter(s=>s.st==='def').length}[k]);
+  let h = '<div class="toolbar">'+[['todas','Todas'],['pend','Faltam'],['exec','Feitas'],['rota','🚚 Em rota'],['def','Em definição (aguardando veículo)'],['semcol','⚠ Sem coleta']].map(([k,l]) =>
     '<button class="fbtn'+(f===k?' on':'')+'" onclick="setF(\'sai\',\''+k+'\')">'+l+' ('+n(k)+')</button>').join('')+'</div>';
-  h += tabela(['Placa','Tipo','Cliente','NF','Destinatário','Cidade','Vol','Status planilha','Executada','Origem'], groupBy(rs), r =>
-    '<td><span class="plate sm">'+esc(r.placa)+'</span></td><td class="small">'+esc(r.tipo)+'</td><td class="small">'+esc(cut(r.op,60))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,40))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td class="small">'+esc(r.status)+'</td><td>'+exPill(r._ex)+'</td><td>'+chipOrig(r._orig, r)+'</td>');
+  h += tabela(['Entrega','Carreg.','Placa','Tipo','Cliente','NF','Destinatário','Cidade','Vol','Status (T)','Executada','Origem'], groupBy(rs), r =>
+    '<td class="prog" title="Ordem de entrega (de cima para baixo)">'+(r.seqEnt?r.seqEnt+'º':'')+'</td><td class="prog muted" title="Ordem de carregamento (de baixo para cima)">'+(r.seqCar?r.seqCar+'º':'')+'</td><td><span class="plate sm">'+esc(r.placa)+'</span></td><td class="small">'+esc(r.tipo)+'</td><td class="small">'+esc(cut(r.op,60))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,40))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td>'+stPill(r)+'</td><td>'+exPill(r._ex)+'</td><td>'+chipOrig(r._orig, r)+'</td>');
   return h;
 }
 /* ---------- AGENDADAS ---------- */
@@ -898,13 +918,15 @@ function numBR(s){ s = String(s||'').replace(/[^\d.,-]/g,''); if (!s) return 0; 
 function fmtN(n, dec){ return n ? n.toLocaleString('pt-BR', { maximumFractionDigits: dec||0 }) : ''; }
 function horaMin(list){ const hs = list.map(r => r.horaProg).filter(x => /^\d{1,2}:\d{2}/.test(x)).sort((a,b) => a.padStart(5,'0').localeCompare(b.padStart(5,'0'))); return hs[0] || (list.find(r => r.horaProg) || {}).horaProg || ''; }
 function somar(list){ return { qt:list.length, peso:list.reduce((s,r)=>s+numBR(r.peso),0), vol:list.reduce((s,r)=>s+numBR(r.vol),0), valor:list.reduce((s,r)=>s+numBR(r.valor),0) }; }
-const precisaLiberacao = r => /sem md|em defini|aguard|libera|pend/i.test(r.status) || /^md$/i.test(r.md.trim());
+const precisaLiberacao = r => /sem md|aguard|libera|pend/i.test(r.status) || /^md$/i.test(r.md.trim());
 
 // Onde está a mercadoria de uma saída do dia D1?
 function localizar(r, D1){
   const A = S.A;
   if (!r.keys.length && !A.execInfo(r).ok) return dispensaColeta(r) ? { c:'wa', t:'Estoque/base — sem NF para conferir' } : { c:'gr', t:'Sem NF na linha' };
   const exR = A.execInfo(r);
+  if (exR.rota) return { c:'dn', t:'Em rota — carregada no veículo '+r.placa };
+  if (exR.ok && exR.src === 'status OK') return { c:'dn', t:'Feita (status OK)' };
   if (exR.ok) return { c:'dn', t:'Carregada/saiu '+(exR.hora||'')+(exR.src==='conferência'?' (conferência'+(exR.quem?' · '+exR.quem.split(' ')[0]:'')+')':'')+(exR.st==='NAO_OK'?' · NÃO OK':'') };
   const rel = A.rel(r);
   const hoje = diaAnterior(D1);
@@ -925,7 +947,8 @@ function localizar(r, D1){
   const col = rel.filter(x => isColeta(x) && cmpD(x.dia, D1) <= 0).sort((a,b) => cmpD(b.dia,a.dia))[0];
   if (col) {
     const ex = A.execInfo(col);
-    if (col.dia === D1) return { c:'wa', t:'Coleta no próprio dia · '+col.placa+' prog. '+(col.horaProg||'—')+(ex.ok?' · coletada '+ex.hora:'') };
+    if (col.dia === D1) return { c:'wa', t:'Coleta no próprio dia · '+col.placa+' prog. '+(col.horaProg||'—')+(ex.ok?' · coletada '+ex.hora:ex.rota?' · em rota':'') };
+    if (ex.rota) return { c:'tr', t:'Coletando agora — em rota no '+col.placa+' ('+(col.dia===S.ref?'hoje':curto(col.dia))+')' };
     if (ex.ok) return { c:'tr', t:'Coletada '+curto(col.dia)+' '+(ex.hora||'')+' no '+col.placa+' — aguardando descarga/leitura' };
     return { c:'tr', t:'Em coleta '+(col.dia===S.ref?'hoje':curto(col.dia))+' · '+col.placa+' prog. '+(col.horaProg||'—') };
   }
@@ -983,7 +1006,7 @@ function viewAlinh(D1, nav, ehHoje){
     const ordem = (String(v.turno).match(/(\d+)\s*[º°o]\b/) || [])[1];
     const AL = S.alin[D1] || {}; const oMan = (AL.ordem||{})[v.placa]; const cMan = (AL.carrega||{})[v.placa] || '';
     const colEx = col.filter(r => S.A.execInfo(r).ok).length;
-    return { v, ent, col, locs, colEx, se: somar(ent), sc: somar(col), pe: horaMin(ent), pc: horaMin(col), lib: v.rows.filter(precisaLiberacao).length, ordemMsg: ordem ? +ordem : null, oMan: oMan ? +oMan : null, ordem: oMan ? +oMan : (ordem ? +ordem : null), cMan, cSug: sugCarrega(v.turno), carrega: cMan || sugCarrega(v.turno) };
+    return { v, ent, col, locs, colEx, se: somar(ent), sc: somar(col), pe: horaMin(ent), pc: horaMin(col), lib: v.rows.filter(precisaLiberacao).length, def: v.rows.filter(r => r.st === 'def').length, ordemMsg: ordem ? +ordem : null, oMan: oMan ? +oMan : null, ordem: oMan ? +oMan : (ordem ? +ordem : null), cMan, cSug: sugCarrega(v.turno), carrega: cMan || sugCarrega(v.turno) };
   }).sort((a,b) => (a.ordem||99) - (b.ordem||99) || (a.pe||a.pc||'99').padStart(5,'0').localeCompare((b.pe||b.pc||'99').padStart(5,'0')));
   subAlin(D1);
   const fc = S.filtroCarrega || '';
@@ -1036,14 +1059,14 @@ function viewAlinh(D1, nav, ehHoje){
       '<td class="prog" style="background:#eaf1ff">'+esc(x.pe)+'</td><td class="n">'+(x.se.qt||'')+'</td><td class="n">'+fmtN(x.se.peso)+'</td><td class="n">'+fmtN(x.se.vol)+'</td><td class="n sep">'+fmtN(x.se.valor)+'</td>'+
       '<td class="prog" style="background:#fff7d1">'+esc(x.pc)+'</td><td class="n">'+(x.sc.qt||'')+'</td>'+(ehHoje?'<td class="n">'+(x.sc.qt?(x.colEx===x.sc.qt?'<span class="pill p-ok">'+x.colEx+'/'+x.sc.qt+'</span>':x.colEx+'/'+x.sc.qt):'')+'</td>':'')+'<td class="n">'+fmtN(x.sc.peso)+'</td><td class="n">'+fmtN(x.sc.vol)+'</td><td class="n sep">'+fmtN(x.sc.valor)+'</td>'+
       '<td><div class="arm"><div class="armbar">'+ORD.slice().reverse().map(seg).join('')+'</div><div>'+resumo+'</div></div></td>'+
-      '<td>'+(x.lib?'<span class="pill p-warn">'+x.lib+' pendente'+(x.lib>1?'s':'')+'</span>':(n?'<span class="pill p-ok">ok</span>':''))+'</td></tr>';
+      '<td>'+(x.lib?'<span class="pill p-warn">'+x.lib+' pendente'+(x.lib>1?'s':'')+'</span> ':'')+(x.def?'<span class="pill p-gray" title="Status em definição — aguardando alocação em veículo">'+x.def+' em definição</span>':'')+(!x.lib&&!x.def&&n?'<span class="pill p-ok">ok</span>':'')+'</td></tr>';
     if (aberto && (x.locs.length || x.col.length)) {
-      h += '<tr class="det"><td colspan="'+(ehHoje?19:18)+'"><table><thead><tr><th>Tipo</th><th>Cliente</th><th>NF</th><th>Destinatário</th><th>Cidade</th><th>Vol</th><th>Prog.</th><th>Status / MD</th><th>Onde está a mercadoria</th></tr></thead><tbody>'+
-        x.locs.slice().sort((a,b) => ORD.indexOf(a.l.c) - ORD.indexOf(b.l.c)).map(y => { const r = y.r;
-          return '<tr><td class="small">'+esc(r.tipo)+'</td><td class="small">'+esc(cut(r.op,55))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,34))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td>'+esc(r.horaProg)+'</td>'+
-            '<td class="small">'+(precisaLiberacao(r)?'<span class="pill p-warn">'+esc(r.status||'sem MD')+'</span>':esc(r.status||''))+'</td><td><span class="loc '+y.l.c+'">'+esc(y.l.t)+'</span></td></tr>'; }).join('')+
+      h += '<tr class="det"><td colspan="'+(ehHoje?19:18)+'"><table><thead><tr><th title="1º = primeiro a carregar (último a entregar)">Carreg.</th><th title="De cima para baixo na planilha">Entrega</th><th>Tipo</th><th>Cliente</th><th>NF</th><th>Destinatário</th><th>Cidade</th><th>Vol</th><th>Prog.</th><th>Status (T) / MD</th><th>Onde está a mercadoria</th></tr></thead><tbody>'+
+        x.locs.slice().sort((a,b) => (a.r.seqCar||0) - (b.r.seqCar||0) || b.r.i - a.r.i).map(y => { const r = y.r;
+          return '<tr><td class="prog">'+(r.seqCar?r.seqCar+'º':'')+'</td><td class="prog muted">'+(r.seqEnt?r.seqEnt+'º':'')+'</td><td class="small">'+esc(r.tipo)+'</td><td class="small">'+esc(cut(r.op,55))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,34))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td>'+esc(r.horaProg)+'</td>'+
+            '<td class="small">'+stPill(r)+(/^md$/i.test(r.md.trim())&&!/sem md/i.test(r.status)?' <span class="pill p-warn">sem MD</span>':'')+'</td><td><span class="loc '+y.l.c+'">'+esc(y.l.t)+'</span></td></tr>'; }).join('')+
         x.col.map(r => { const ex = S.A.execInfo(r);
-          return '<tr><td class="small">COLETA</td><td class="small">'+esc(cut(r.op,55))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,34))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td>'+esc(r.horaProg)+'</td><td class="small">'+esc(r.status||'')+'</td><td>'+(ex.ok?'<span class="loc ok">✓ coletada '+esc(ex.hora||'')+(ex.src==='conferência'?' (conferência)':'')+'</span>':'<span class="muted small">coleta do dia — pendente</span>')+'</td></tr>'; }).join('')+
+          return '<tr><td></td><td class="prog muted">'+(r.seqCol?'c'+r.seqCol:'')+'</td><td class="small">COLETA</td><td class="small">'+esc(cut(r.op,55))+'</td>'+nfTd(r)+'<td class="small">'+esc(cut(r.dest,34))+'</td><td class="small">'+esc(r.cidade)+'</td><td>'+esc(r.vol)+'</td><td>'+esc(r.horaProg)+'</td><td class="small">'+stPill(r)+'</td><td>'+(ex.rota?'<span class="loc tr">🚚 em rota — coletando</span>':ex.ok?'<span class="loc ok">✓ coletada '+esc(ex.hora||'')+(ex.src==='conferência'?' (conferência)':'')+'</span>':'<span class="muted small">coleta do dia — pendente</span>')+'</td></tr>'; }).join('')+
         '</tbody></table></td></tr>';
     }
   });
@@ -1056,7 +1079,7 @@ function viewAlinh(D1, nav, ehHoje){
       const porMsg = !S.hid.placas.includes(x.v.placa);
       return '<button class="mchip off" title="'+(porMsg?'Oculto pela mensagem: '+esc(x.v.turno):'Clique para mostrar de novo')+'" onclick="'+(porMsg?'hidMsg(\''+msgKeyAttr(msgKey(x.v))+'\')':'hidPlaca(\''+x.v.placa+'\')')+'"><span class="plate sm">'+esc(x.v.placa)+'</span> '+esc((x.v.motorista||'').toUpperCase())+(porMsg?' · msg':'')+'</button>'; }).join('')+
     ' <button class="fbtn" onclick="reexibirTodos()">Mostrar todos</button></div>';
-  h += '<div class="muted small" style="margin-top:8px">✕ oculta o veículo; "Filtrar por mensagem" oculta em grupo. Clique no veículo para ver NF a NF. '+(ehHoje?'"Carregada" = hora na coluna K ou saída conferida na Conferência Geral. ':'')+'"No armazém" = lida no inventário desde '+esc(diaAnterior(D1))+' ou descarga conferida. "A caminho" = coleta programada ou coletada sem descarga/leitura. Ordem e Carrega: preencha manualmente (fica salvo para todos); em branco usa o que a mensagem diz (em itálico).</div>';
+  h += '<div class="muted small" style="margin-top:8px">✕ oculta o veículo; "Filtrar por mensagem" oculta em grupo. Clique no veículo para ver NF a NF. '+(ehHoje?'"Carregada" = hora na coluna K ou saída conferida na Conferência Geral. ':'')+'"No armazém" = lida no inventário desde '+esc(diaAnterior(D1))+' ou descarga conferida. "A caminho" = coleta programada ou coletada sem descarga/leitura. Status (T): OK = feito · em definição = aguardando veículo · em rota = no veículo executando · demais como escrito. No detalhe, as NFs estão na ordem de carregamento (de baixo para cima na planilha); a entrega segue de cima para baixo. Ordem e Carrega: preencha manualmente (fica salvo para todos); em branco usa o que a mensagem diz (em itálico).</div>';
   return h;
 }
 function toggleD1(id){ S.d1Open = S.d1Open || new Set(); if (S.d1Open.has('*')) S.d1Open = new Set(); S.d1Open.has(id) ? S.d1Open.delete(id) : S.d1Open.add(id); render(); }
