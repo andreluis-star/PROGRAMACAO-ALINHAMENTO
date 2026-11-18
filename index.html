@@ -194,6 +194,7 @@ input.i,textarea.i,select.i{width:100%;padding:9px 10px;border:1px solid var(--l
   <button data-t="hoje">📋 Alinhamento Hoje</button>
   <button data-t="d1">🗓 Alinhamento D+1</button>
   <button data-t="inv">🔍 Inventário × Ontem</button>
+  <button data-t="trf">🚛 Transferência SP</button>
 </nav>
 <main id="main"></main>
 <div id="loading" class="hidden">Carregando…</div>
@@ -203,7 +204,7 @@ input.i,textarea.i,select.i{width:100%;padding:9px 10px;border:1px solid var(--l
 /* ============================================================
    CONFIGURAÇÃO
    ============================================================ */
-const APP_VERSION = '2026.11.12-1';
+const APP_VERSION = '2026.11.18-1';
 
 // Conferência Geral (Firestore + Auth) — mesmo projeto do conferente.html
 const FB_CONF = {
@@ -524,6 +525,7 @@ async function loadAll(full){
     S.lastLoad = new Date();
   } finally { S.loading = false; hideLoading(); }
   subscribeOps();
+  subscribeTrf();
   render();
 }
 
@@ -726,6 +728,7 @@ function render(){
   b.style.background = nHigh ? 'var(--bad)' : 'var(--warn)';
   const m = $('#main');
   if (S.busca) { m.innerHTML = viewBusca(); return; }
+  if (S.tab === 'trf') { m.innerHTML = viewTrf() + (day && day.status === 'ok' ? rodape() : ''); return; }
   if (!day || day.status !== 'ok') { m.innerHTML = '<div class="empty">Não encontrei a aba <b>'+esc(S.ref)+'</b> na planilha de Programação.<br><span class="small">Planilha: '+esc(S.sheetId)+' ('+esc(S.sheetFonte)+')</span></div>' + (S.tab === 'agd' ? viewAgd() : ''); return; }
   m.innerHTML = ({pan:viewPan, col:viewCol, sai:viewSai, agd:viewAgd, ale:viewAle, inv:viewInv, d1:viewD1, hoje:viewHoje}[S.tab])() + rodape();
 }
@@ -943,6 +946,9 @@ function localizar(r, D1){
   const ent = S.ops.filter(o => o.tipoExecucao === 'ENTRADA' && cmpD(o.dataRef, D1) <= 0 && (o.nfs||[]).some(n => nfKeys(n.nf, n.di).some(k => r.keys.includes(k))))
     .sort((a,b) => tsMs(b.timestamp) - tsMs(a.timestamp))[0];
   if (ent) return { c: outra.length ? 'wa' : 'ok', t:'No armazém · descarga conferida '+(tsMs(ent.timestamp)?hhmm(new Date(tsMs(ent.timestamp))):'')+' ('+ent.placa+')'+aviso };
+  // 3b) vindo na transferência da filial SP (importada do e-mail)
+  const trf = trfDaLinha(r, addD(D1, -6), D1)[0];
+  if (trf) return { c:'tr', t:'Vindo na transferência SP '+curto(trf.t.data)+(trf.it.md?' · MD '+trf.it.md:'')+(trf.it.vol?' · '+fmtN(trf.it.vol)+' vol':'')+aviso };
   // 4) coleta
   const col = rel.filter(x => isColeta(x) && cmpD(x.dia, D1) <= 0).sort((a,b) => cmpD(b.dia,a.dia))[0];
   if (col) {
@@ -1123,12 +1129,15 @@ function abrirCarga(key){
     '<b>'+esc(r.dia)+' · '+esc(r.tipo)+' · <span class="plate sm">'+esc(r.placa)+'</span> '+esc(r.motorista||'')+'</b>'+
     '<div>'+esc(cut(r.op,120))+'</div><div>NF '+esc(r.nf||'—')+' · '+esc(r.dest)+' · '+esc(r.cidade)+' · vol '+esc(r.vol)+'</div>'+
     '<div>Prog. '+esc(r.horaProg||'—')+' · chegada '+esc(r.chegada||'—')+' · finalizou <b>'+esc(r.finalizou||'—')+'</b> · status '+esc(r.status||'—')+' · resp. '+esc(r.resp||'—')+'</div>' }));
-  const ks = new Set(linhas.flatMap(r => r.keys));
+  const ks = new Set([key, ...linhas.flatMap(r => r.keys)]);
   S.ops.forEach(o => (o.nfs||[]).forEach(n => { if (nfKeys(n.nf, n.di).some(k => ks.has(k))) {
     const t = tsMs(o.timestamp);
     evs.push({ t: t || startOfDay(o.dataRef), cls:'conf', html:'<b>📋 Conferência '+esc(o.tipoExecucao)+' · '+esc(o.dataRef)+' '+(t?hhmm(new Date(t)):'')+' · <span class="plate sm">'+esc(o.placa)+'</span></b><div>NF '+esc(n.nf)+' · '+esc(n.status)+' · '+esc(o.conferenteNome||'')+(n.observacao?' · '+esc(n.observacao):'')+'</div>' });
   }}));
   S.inv.forEach(i => { if (nfKeys(i.nf).some(k => ks.has(k))) evs.push({ t:Number(i.ts), cls:'inv', html:'<b>🔍 Inventário · '+fmtD(new Date(Number(i.ts)))+' '+hhmm(new Date(Number(i.ts)))+'</b><div>'+esc(i.cliente||'')+' · end. '+esc(i.end||'—')+' · '+esc(i.vol||'')+' vol · '+esc(i.operador||'')+(i.obs?' · '+esc(i.obs):'')+'</div>' }); });
+  const vtrf = new Set();
+  [...ks].forEach(k => ((S.trfIdx||{})[k] || []).forEach(e => { const sig = e.t.id+'#'+e.it.lin; if (vtrf.has(sig) || (base && !trfCombina(e.it, base, k))) return; vtrf.add(sig);
+    evs.push({ t: e.t.dataTs + 72000000, cls:'col', html:'<b>🚛 Transferência Filial SP → Matriz · '+esc(e.t.data)+'</b><div>NF '+esc(e.it.nf)+' · MD '+esc(e.it.md)+' · '+esc(e.it.rem)+' → '+esc(e.it.dest)+' · '+esc(e.it.cidade)+' · '+esc(e.it.vol)+' vol · '+esc(e.it.serv)+'</div>' }); }));
   evs.sort((a,b) => a.t - b.t);
   modal('<button class="close" onclick="fecharModal()">✕</button><h2>Trajetória · NF '+esc(base ? nfLabel(base) : key)+'</h2>'+
     '<div class="muted small" style="margin-bottom:12px">Linhas da Programação com a mesma NF/DI ('+diasOk().length+' abas lidas), conferências e leituras do inventário (últimos 4 dias).</div>'+
@@ -1136,6 +1145,332 @@ function abrirCarga(key){
 }
 function modal(html){ $('#modal-root').innerHTML = '<div class="modal-bg" onclick="if(event.target===this)fecharModal()"><div class="modal">'+html+'</div></div>'; }
 function fecharModal(){ $('#modal-root').innerHTML = ''; }
+
+/* ============================================================
+   TRANSFERÊNCIA FILIAL SP → MATRIZ (importação da planilha do e-mail)
+   Firestore: coleção "transferencias", 1 doc por data (dd-mm-aaaa)
+   ============================================================ */
+const TRF_LS = 'ps_trf_local_v1';
+S.trfRemote = {}; S.trfLocal = lsGet(TRF_LS) || {}; S.trfOk = null; S.trfUnsub = null; S.trfKey = '';
+function trfLista(){
+  const m = Object.assign({}, S.trfLocal, S.trfRemote);
+  return Object.values(m).sort((a,b) => b.dataTs - a.dataTs);
+}
+function subscribeTrf(){
+  const desde = startOfDay(S.ref) - 25*86400000;
+  const key = String(desde);
+  if (S.trfKey === key && S.trfUnsub) return;
+  if (S.trfUnsub) S.trfUnsub();
+  S.trfKey = key;
+  S.trfUnsub = fs.collection('transferencias').where('dataTs','>=',desde).onSnapshot(snap => {
+    const m = {}; snap.docs.forEach(d => { m[d.id] = Object.assign({ id: d.id }, d.data()); });
+    S.trfRemote = m; S.trfOk = true;
+    // o que estava só no navegador e já subiu sai da lista local
+    Object.keys(S.trfLocal).forEach(id => { if (m[id] && tsMs(m[id].importadoEm) >= (S.trfLocal[id].importadoMs||0)) delete S.trfLocal[id]; });
+    lsSet(TRF_LS, S.trfLocal); trfIndexar(); render();
+  }, err => { console.warn('transferencias', err); S.trfOk = false; trfIndexar(); render(); });
+}
+const mdKeys = s => (String(s||'').match(/\d{4,}/g) || []).map(x => x.replace(/^0+/,''));
+// índice chave (NF / MD) -> itens de transferência
+function trfIndexar(){
+  const idx = {};
+  trfLista().forEach(t => (t.itens||[]).forEach(it => {
+    const e = { it, t };
+    nfKeys(it.nf).forEach(k => (idx[k] = idx[k] || []).push(e));
+    mdKeys(it.md).forEach(k => (idx['MD'+k] = idx['MD'+k] || []).push(e));
+  }));
+  S.trfIdx = idx;
+}
+trfIndexar();
+// item de transferência combina com a linha da Programação? (NF curta exige mesmo destinatário/remetente)
+function trfCombina(it, r, key){
+  if (key.startsWith('MD') || key.length >= 5) return true;
+  const d = firstWord(it.dest), c = firstWord(it.rem);
+  return (d && (d === r.destW || d === r.cliW)) || (c && (c === r.cliW || c === r.destW));
+}
+// transferências que trazem a carga da linha r, com data entre "desde" e "ate" (dd/mm/aaaa)
+function trfDaLinha(r, desde, ate){
+  const a = startOfDay(desde), b = startOfDay(ate), out = new Map();
+  const ks = r.keys.concat(mdKeys(r.md).map(k => 'MD'+k));
+  ks.forEach(k => ((S.trfIdx||{})[k] || []).forEach(e => {
+    if (e.t.dataTs < a || e.t.dataTs > b || !trfCombina(e.it, r, k)) return;
+    out.set(e.t.id+'#'+e.it.lin, e);
+  }));
+  return [...out.values()].sort((x,y) => y.t.dataTs - x.t.dataTs);
+}
+// onde está a mercadoria de um item da transferência
+function trfOnde(it, t, linhas){
+  const ks = nfKeys(it.nf), curta = ks.every(k => k.length < 5);
+  const fw = [firstWord(it.dest), firstWord(it.rem)].filter(Boolean);
+  const saiu = linhas.filter(r => isSaida(r) && S.A.execInfo(r).ok).sort((a,b) => cmpD(b.dia,a.dia))[0];
+  if (saiu) { const e = S.A.execInfo(saiu); return { c:'dn', t:'Saiu em '+saiu.placa+' ('+curto(saiu.dia)+(e.hora&&e.hora!=='OK'?' '+e.hora:'')+')' }; }
+  const inv = S.inv.filter(i => Number(i.ts) >= t.dataTs && nfKeys(i.nf).some(k => ks.includes(k)) && (!curta || !i.cliente || fw.includes(firstWord(i.cliente)))).sort((a,b) => b.ts - a.ts)[0];
+  if (inv) return { c:'ok', t:'No armazém · inventário '+curto(fmtD(new Date(Number(inv.ts))))+' '+hhmm(new Date(Number(inv.ts)))+(inv.end?' · end. '+inv.end:'') };
+  const ent = !curta && S.ops.filter(o => o.tipoExecucao === 'ENTRADA' && cmpD(o.dataRef, t.data) >= 0 && (o.nfs||[]).some(n => nfKeys(n.nf, n.di).some(k => ks.includes(k)))).sort((a,b) => tsMs(b.timestamp) - tsMs(a.timestamp))[0];
+  if (ent) return { c:'ok', t:'No armazém · descarga conferida '+curto(ent.dataRef)+(tsMs(ent.timestamp)?' '+hhmm(new Date(tsMs(ent.timestamp))):'')+' ('+ent.placa+')' };
+  return { c:'tr', t:'Em trânsito SP → Matriz' };
+}
+
+/* ---------- ABA ---------- */
+function viewTrf(){
+  const L = trfLista();
+  let h = '<div class="toolbar"><button class="btn o" onclick="trfAbrirImport()">⬆ Importar planilha da transferência</button>'+
+    L.slice(0,8).map(t => '<button class="fbtn'+(t.id===trfSel(L).id?' on':'')+'" onclick="S.trfSel=\''+t.id+'\';render()">'+esc(curto(t.data))+' · '+SEMANA[parseD(t.data).getDay()].slice(0,3)+(S.trfRemote[t.id]?'':' 💾')+'</button>').join('')+
+    (S.trfOk===false?'<span class="pill p-warn" title="Sem permissão no Firestore para a coleção transferencias">salvas só neste navegador</span>':'')+'</div>';
+  if (!L.length) return h + '<div class="empty">Nenhuma transferência importada ainda.<br><span class="small">Baixe a planilha do e-mail <b>"Transferência Filial - Matriz"</b> e clique em <b>Importar</b>.</span></div>';
+  const t = trfSel(L);
+  // linhas da Programação que levam cada item (saídas a partir da data da transferência)
+  const all = []; diasOk().forEach(d => { if (cmpD(d, t.data) >= 0) S.days[d].rows.forEach(r => all.push(r)); });
+  const idx = {};
+  all.forEach(r => r.keys.concat(mdKeys(r.md).map(k => 'MD'+k)).forEach(k => (idx[k] = idx[k] || []).push(r)));
+  const linhasDe = it => { const m = new Map();
+    nfKeys(it.nf).forEach(k => (idx[k]||[]).forEach(r => { if (trfCombina(it, r, k)) m.set(r.id, r); }));
+    mdKeys(it.md).forEach(k => (idx['MD'+k]||[]).forEach(r => m.set(r.id, r)));
+    return [...m.values()]; };
+  const itens = (t.itens||[]).map(it => { const ls = linhasDe(it); const sai = ls.filter(isSaida).sort((a,b) => cmpD(a.dia,b.dia) || a.i-b.i); return { it, ls, sai, onde: trfOnde(it, t, ls) }; });
+  const n = itens.length, c = k => itens.filter(x => x.onde.c === k).length, semProg = itens.filter(x => !x.sai.length).length;
+  const T = t.tot || {};
+  h += '<div class="kpis">'+
+    kpi('b','Transferência '+curto(t.data), n+' NFs', fmtN(T.vol)+' vol · '+fmtN(T.peso)+' kg · R$ '+fmtN(T.valor), null, 'trf')+
+    kpi('','Em trânsito SP → Matriz', c('tr'), 'sem leitura no inventário/descarga', null, 'trf')+
+    kpi('g','Chegaram no armazém', c('ok'), 'lidas no inventário ou descarga conferida', n ? Math.round(c('ok')*100/n) : 0, 'trf')+
+    kpi('o','Já saíram', c('dn'), 'saída executada na Programação', n ? Math.round(c('dn')*100/n) : 0, 'trf')+
+    kpi(semProg?'r':'g','Sem programação de saída', semProg, 'NF/MD não achada na Programação desde '+curto(t.data), null, 'trf')+'</div>';
+  if ((t.info||[]).length) h += '<div class="msgpanel small">'+t.info.map(x => '<span class="mchip" style="background:#f3f5f9;color:var(--ink)">'+esc(x.k)+': <b>'+esc(x.v)+'</b></span>').join('')+'</div>';
+  const grupos = []; const gi = {};
+  itens.forEach(x => { const k = x.it.serv || '(sem serviço)'; if (!gi[k]) { gi[k] = { k, l: [] }; grupos.push(gi[k]); } gi[k].l.push(x); });
+  h += '<div class="tbl-wrap"><table><thead><tr><th>NF</th><th>MD</th><th>Remetente</th><th>Destinatário</th><th>Cidade</th><th>Vol</th><th>Peso</th><th>Valor R$</th><th>Programada para</th><th>Onde está</th></tr></thead><tbody>';
+  grupos.forEach(g => {
+    const s = g.l.reduce((a,x) => ({ v:a.v+x.it.vol, p:a.p+x.it.peso }), { v:0, p:0 });
+    h += '<tr class="grp"><td colspan="10">'+esc(g.k)+' <span class="muted small" style="font-family:Inter;font-weight:500">· '+g.l.length+' NFs · '+fmtN(s.v)+' vol · '+fmtN(s.p,1)+' kg</span></td></tr>';
+    g.l.forEach(x => { const it = x.it, k0 = (nfKeys(it.nf)[0] || '');
+      h += '<tr><td class="nf" onclick="abrirCarga(\''+esc(k0)+'\')">'+esc(it.nf)+'</td><td>'+esc(it.md)+'</td><td class="small">'+esc(cut(it.rem,34))+'</td><td class="small">'+esc(cut(it.dest,30))+'</td><td class="small">'+esc(it.cidade)+'</td>'+
+        '<td class="n">'+fmtN(it.vol)+'</td><td class="n">'+fmtN(it.peso,2)+'</td><td class="n">'+fmtN(it.valor,2)+'</td>'+
+        '<td>'+(x.sai.length ? chipDest(x.sai, S.ref) : '<span class="chip warn">⚠ sem programação</span>')+'</td><td><span class="loc '+x.onde.c+'">'+esc(x.onde.t)+'</span></td></tr>'; });
+  });
+  h += '</tbody></table></div>';
+  h += '<div class="muted small" style="margin-top:8px">Importada '+(t.importadoPor?'por '+esc(t.importadoPor)+' ':'')+(t.importadoEm?'em '+esc(fmtD(new Date(tsMs(t.importadoEm))))+' '+hhmm(new Date(tsMs(t.importadoEm))):'')+(t.arquivo?' · arquivo '+esc(t.arquivo):'')+(t.repetidas?' · '+t.repetidas+' linha(s) repetida(s) ignorada(s)':'')+
+    ' · <a href="#" onclick="trfExcluir(\''+t.id+'\');return false">excluir esta importação</a>. A NF/MD é cruzada com as saídas da Programação a partir de '+esc(t.data)+', com o Inventário e com as descargas da Conferência Geral; essas cargas aparecem como "A caminho" no Alinhamento.</div>';
+  return h;
+}
+function trfSel(L){ L = L || trfLista(); return L.find(t => t.id === S.trfSel) || L.find(t => t.dataTs <= startOfDay(S.ref) + 86400000) || L[0]; }
+
+/* ---------- IMPORTAÇÃO ---------- */
+let _fflateP;
+function carregarFflate(){
+  if (window.fflate) return Promise.resolve();
+  return _fflateP = _fflateP || new Promise((ok, ko) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js'; s.onload = ok; s.onerror = () => { _fflateP = null; ko(new Error('não consegui carregar o leitor de Excel (sem internet?)')); }; document.head.appendChild(s); });
+}
+const isoToBR = s => { const m = String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3]+'/'+m[2]+'/'+m[1] : ''; };
+const brToIso = s => { const m = String(s||'').match(/^(\d{2})\/(\d{2})\/(\d{4})/); return m ? m[3]+'-'+m[2]+'-'+m[1] : ''; };
+function trfAbrirImport(){
+  S.trfImp = null;
+  modal('<button class="close" onclick="fecharModal()">✕</button><h2>⬆ Importar transferência SP → Matriz</h2>'+
+    '<div class="small muted">Baixe o anexo do e-mail <b>"Transferência Filial - Matriz"</b> (PLANILHA TRANSFERENCIA FILIAL X MATRIZ.xlsx) e solte aqui.</div>'+
+    '<label id="trf-drop" style="display:block;margin-top:12px;border:2px dashed var(--line);border-radius:12px;padding:26px;text-align:center;cursor:pointer;background:#f7f9fc">'+
+      '<input type="file" id="trf-file" accept=".xlsx,.xlsm" class="hidden" onchange="trfArquivo(this.files[0])"><b>📄 Clique para escolher</b> ou arraste o arquivo .xlsx para cá</label>'+
+    '<label class="f">Data da transferência <span style="color:var(--bad)">*</span></label><input class="i" type="date" id="trf-data" style="max-width:220px" oninput="trfPrevia()">'+
+    '<div id="trf-prev" style="margin-top:12px"></div>');
+  const dz = $('#trf-drop');
+  dz.ondragover = e => { e.preventDefault(); dz.style.borderColor = 'var(--orange)'; };
+  dz.ondragleave = () => { dz.style.borderColor = ''; };
+  dz.ondrop = e => { e.preventDefault(); dz.style.borderColor = ''; if (e.dataTransfer.files[0]) trfArquivo(e.dataTransfer.files[0]); };
+}
+async function trfArquivo(f){
+  if (!f) return;
+  const P = $('#trf-prev');
+  if (/\.xls$/i.test(f.name)) { P.innerHTML = '<div class="pill p-bad">Arquivo .xls antigo — abra no Excel e salve como .xlsx</div>'; return; }
+  P.innerHTML = '<span class="muted">Lendo '+esc(f.name)+' ('+(f.size/1048576).toFixed(1)+' MB)…</span>';
+  try {
+    await carregarFflate();
+    const files = await trfLerXlsx(new Uint8Array(await f.arrayBuffer()));
+    const R = trfInterpretar(trfMatriz(files));
+    if (!R.itens.length) throw new Error('nenhuma NF encontrada abaixo do cabeçalho');
+    R.arquivo = f.name; S.trfImp = R;
+    const di = $('#trf-data'); if (!di.value && R.dataSug) di.value = brToIso(R.dataSug);
+    trfPrevia();
+  } catch(e) { console.error(e); S.trfImp = null; P.innerHTML = '<div class="pill p-bad">Não consegui ler a planilha: '+esc(e.message)+'</div>'; }
+}
+function trfPrevia(){
+  const R = S.trfImp, P = $('#trf-prev'); if (!R || !P) return;
+  const data = isoToBR($('#trf-data').value);
+  const id = data ? alinId(data) : '';
+  const ja = id && (S.trfRemote[id] || S.trfLocal[id]);
+  const faltam = ['nf','md','vol','peso','dest'].filter(k => !R.colunas.includes(k));
+  P.innerHTML = '<div class="kpis" style="margin-bottom:8px">'+
+      '<div class="kpi b" style="cursor:default"><div class="l">NFs</div><div class="v">'+R.tot.qt+'</div></div>'+
+      '<div class="kpi" style="cursor:default"><div class="l">Volumes</div><div class="v">'+fmtN(R.tot.vol)+'</div></div>'+
+      '<div class="kpi" style="cursor:default"><div class="l">Peso kg</div><div class="v">'+fmtN(R.tot.peso)+'</div></div>'+
+      '<div class="kpi o" style="cursor:default"><div class="l">Valor R$</div><div class="v" style="font-size:26px">'+fmtN(R.tot.valor)+'</div></div></div>'+
+    (R.repetidas ? '<div class="pill p-warn">'+R.repetidas+' linha(s) repetida(s) (mesma NF e MD) — importadas uma vez só</div> ' : '')+
+    (faltam.length ? '<div class="pill p-warn">Colunas não encontradas: '+faltam.join(', ')+'</div> ' : '')+
+    (R.info.length ? '<div class="small" style="margin:6px 0">'+R.info.map(x => esc(x.k)+': <b>'+esc(x.v)+'</b>').join(' · ')+'</div>' : '')+
+    '<div class="tbl-wrap" style="max-height:260px;margin-top:8px"><table><thead><tr><th>NF</th><th>MD</th><th>Remetente</th><th>Destinatário</th><th>Cidade</th><th>Vol</th><th>Serviço</th></tr></thead><tbody>'+
+      R.itens.map(it => '<tr><td><b>'+esc(it.nf)+'</b></td><td>'+esc(it.md)+'</td><td class="small">'+esc(cut(it.rem,30))+'</td><td class="small">'+esc(cut(it.dest,26))+'</td><td class="small">'+esc(it.cidade)+'</td><td>'+fmtN(it.vol)+'</td><td class="small">'+esc(it.serv)+'</td></tr>').join('')+
+    '</tbody></table></div>'+
+    (ja ? '<div class="pill p-warn" style="margin-top:10px">Já existe uma importação de '+esc(data)+' ('+(ja.itens||[]).length+' NFs'+(ja.importadoPor?', por '+esc(ja.importadoPor):'')+') — ao salvar, ela será substituída.</div>' : '')+
+    '<div style="display:flex;gap:8px;margin-top:14px;align-items:center"><button class="btn o" '+(data?'':'disabled style="opacity:.5;cursor:not-allowed"')+' onclick="trfSalvar()">'+(ja?'Substituir':'Salvar')+' transferência'+(data?' de '+esc(data):'')+'</button>'+
+    (data?'':'<span class="small" style="color:var(--bad)">Informe a data da transferência</span>')+'<button class="btn g" onclick="fecharModal()">Cancelar</button></div>';
+}
+async function trfSalvar(){
+  const R = S.trfImp, data = isoToBR($('#trf-data').value);
+  if (!R || !data) return;
+  const id = alinId(data), quem = (auth.currentUser && auth.currentUser.email) || '';
+  const doc = { data, dataTs: startOfDay(data), itens: R.itens, info: R.info, tot: R.tot, repetidas: R.repetidas, arquivo: R.arquivo, importadoPor: quem };
+  const btn = document.querySelector('#trf-prev .btn.o'); if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
+  try {
+    await fs.collection('transferencias').doc(id).set(Object.assign({}, doc, { importadoEm: firebase.firestore.FieldValue.serverTimestamp() }));
+    delete S.trfLocal[id]; lsSet(TRF_LS, S.trfLocal);
+    S.trfOk = true;
+  } catch(e) {
+    console.warn('salvar transferência', e); S.trfOk = false;
+    S.trfLocal[id] = Object.assign({ id }, doc, { importadoEm: Date.now(), importadoMs: Date.now() }); lsSet(TRF_LS, S.trfLocal);
+  }
+  S.trfSel = id; S.trfImp = null; fecharModal(); trfIndexar();
+  if (S.tab !== 'trf') goTab('trf'); else render();
+  subscribeTrf();
+}
+async function trfExcluir(id){
+  const t = S.trfRemote[id] || S.trfLocal[id]; if (!t) return;
+  modal('<button class="close" onclick="fecharModal()">✕</button><h2>Excluir importação</h2><p>Excluir a transferência de <b>'+esc(t.data)+'</b> ('+(t.itens||[]).length+' NFs) para todos os usuários?</p>'+
+    '<div style="display:flex;gap:8px"><button class="btn" style="background:var(--bad)" onclick="trfExcluirOk(\''+id+'\')">Excluir</button><button class="btn g" onclick="fecharModal()">Cancelar</button></div>');
+}
+async function trfExcluirOk(id){
+  delete S.trfLocal[id]; lsSet(TRF_LS, S.trfLocal);
+  if (S.trfRemote[id]) { try { await fs.collection('transferencias').doc(id).delete(); delete S.trfRemote[id]; } catch(e) { console.warn('excluir transferência', e); } }
+  fecharModal(); trfIndexar(); render();
+}
+
+/* ---------- leitor leve de .xlsx (só o começo da 1ª aba) ----------
+   A planilha da filial vem formatada até a linha 1.048.539 (~180 MB de XML descompactado).
+   Em vez de abrir tudo, descompacta em streaming e para depois de ~6 MB da aba. */
+function trfLerXlsx(u8){
+  return new Promise((resolve, reject) => {
+    const LIM = 6 * 1024 * 1024;
+    const want = n => /^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/sheet\d+\.xml)$/i.test(n);
+    const out = {}; let pend = 0, fim = false;
+    const done = () => { if (fim && pend === 0) resolve(out); };
+    try {
+      const uz = new fflate.Unzip(f => {
+        if (!want(f.name)) return;
+        pend++;
+        const dec = new TextDecoder('utf-8'); let txt = '', tam = 0, ok = false;
+        const sheet = /worksheets/i.test(f.name);
+        f.ondata = (err, chunk, final) => {
+          if (ok) return;
+          if (err) { ok = true; pend--; out[f.name] = txt; return done(); }
+          txt += dec.decode(chunk, { stream: !final }); tam += chunk.length;
+          if (final || (sheet && tam >= LIM)) {
+            ok = true; out[f.name] = txt; pend--;
+            if (!final) { try { f.terminate(); } catch(e){} }
+            done();
+          }
+        };
+        f.start();
+      });
+      uz.register(fflate.UnzipInflate);
+      const PED = 256 * 1024;
+      for (let o = 0; o < u8.length; o += PED) uz.push(u8.subarray(o, Math.min(u8.length, o + PED)), o + PED >= u8.length);
+      fim = true; done();
+    } catch(e) { reject(e); }
+  });
+}
+function trfXmlTxt(s){ return s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,(m,n)=>String.fromCharCode(+n)).replace(/&amp;/g,'&'); }
+function trfColIdx(ref){ const L = ref.replace(/\d+/g,''); let n = 0; for (const ch of L) n = n*26 + (ch.charCodeAt(0)-64); return n-1; }
+// devolve a 1ª aba como matriz de linhas [ [v0, v1, ...], ... ] (índice = linha real - 1)
+function trfMatriz(files){
+  const ss = [];
+  const sx = files['xl/sharedStrings.xml'] || '';
+  (sx.match(/<si>[\s\S]*?<\/si>/g) || []).forEach(si => ss.push(trfXmlTxt((si.match(/<t[^>]*>[\s\S]*?<\/t>/g) || []).map(t => t.replace(/<[^>]+>/g,'')).join(''))));
+  // 1ª aba pela ordem do workbook
+  let path = '';
+  const wb = files['xl/workbook.xml'] || '', rels = files['xl/_rels/workbook.xml.rels'] || '';
+  const s1 = wb.match(/<sheet\b[^>]*r:id="([^"]+)"/);
+  if (s1) { const re = new RegExp('<Relationship\\b[^>]*Id="'+s1[1]+'"[^>]*>'); const m = rels.match(re); if (m) { const t = (m[0].match(/Target="([^"]+)"/)||[])[1]; if (t) path = 'xl/' + t.replace(/^\/?xl\//,'').replace(/^\//,''); } }
+  const xml = files[path] || files['xl/worksheets/sheet1.xml'] || '';
+  if (!xml) throw new Error('aba não encontrada no arquivo');
+  const M = []; let vazias = 0, temDado = false;
+  const reRow = /<row\b([^>]*?)(\/>|>([\s\S]*?)<\/row>)/g; let r;
+  while ((r = reRow.exec(xml))) {
+    const rn = +((r[1].match(/\br="(\d+)"/)||[])[1] || (M.length+1));
+    const body = r[3] || ''; const linha = [];
+    const reC = /<c\b([^>]*?)(\/>|>([\s\S]*?)<\/c>)/g; let c;
+    while ((c = reC.exec(body))) {
+      const at = c[1], inner = c[3] || '';
+      const ref = (at.match(/\br="([A-Z]+)\d+"/)||[])[1]; if (!ref) continue;
+      const t = (at.match(/\bt="([^"]+)"/)||[])[1] || 'n';
+      let v = (inner.match(/<v>([\s\S]*?)<\/v>/)||[])[1];
+      if (t === 's') v = v != null ? ss[+v] : '';
+      else if (t === 'inlineStr') v = trfXmlTxt((inner.match(/<t[^>]*>([\s\S]*?)<\/t>/)||[])[1] || '');
+      else if (t === 'str' || t === 'e') v = v != null ? trfXmlTxt(v) : '';
+      else if (t === 'b') v = v === '1';
+      else v = v != null && v !== '' ? Number(v) : '';
+      if (v === '' || v == null) continue;
+      linha[trfColIdx(ref)] = v;
+    }
+    if (linha.length) { M[rn-1] = linha; vazias = 0; temDado = true; }
+    else if (temDado && ++vazias > 400) break;          // acabou a área com dados
+  }
+  for (let i = 0; i < M.length; i++) if (!M[i]) M[i] = [];
+  return M;
+}
+
+/* ---------- interpreta a planilha "TRANSFERÊNCIA FILIAL X MATRIZ" ---------- */
+const TRF_COLS = { nf:/^nf\b|nota/, md:/^md\b|minuta/, rem:/remet/, dest:/destinat/, cidade:/cidade|destino/, vol:/^vol/, peso:/^peso/, valor:/valor/, serv:/servi/ };
+function trfNorm(s){ return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim(); }
+function trfHora(v){
+  if (typeof v === 'number' && v >= 0 && v < 1) { const m = Math.round(v*1440); return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
+  if (typeof v === 'number' && v > 30000 && v < 80000) { const d = new Date(Math.round((v-25569)*86400000)); const fr = v % 1; const dd = String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear(); return fr ? dd+' '+trfHora(fr) : dd; }
+  return String(v).trim();
+}
+function trfInterpretar(M){
+  // linha de cabeçalho = a que tem NF e MD (ou NF e REMETENTE)
+  let hi = -1;
+  for (let i = 0; i < Math.min(M.length, 60); i++) {
+    const t = (M[i]||[]).map(trfNorm);
+    if (t.some(x => TRF_COLS.nf.test(x)) && t.some(x => TRF_COLS.md.test(x) || TRF_COLS.rem.test(x))) { hi = i; break; }
+  }
+  if (hi < 0) throw new Error('não encontrei a linha de cabeçalho (NF / MD / REMETENTE…)');
+  const H = (M[hi]||[]).map(trfNorm), col = {};
+  Object.keys(TRF_COLS).forEach(k => { const j = H.findIndex((x, idx) => x && TRF_COLS[k].test(x) && !Object.values(col).includes(idx)); if (j >= 0) col[k] = j; });
+  // cidade/destino não pode pegar "destinatario"
+  if (col.cidade === col.dest) delete col.cidade;
+  const g = (L, k) => col[k] == null ? '' : (L[col[k]] == null ? '' : L[col[k]]);
+  // bloco de informações acima do cabeçalho (horários, pallets, data)
+  const info = []; let dataSug = '';
+  const labelCols = new Set();
+  for (let i = 0; i < hi; i++) (M[i]||[]).forEach((v, j) => { if (typeof v === 'string' && /[a-z]{3}/i.test(v)) labelCols.add(j); });
+  const LC = [...labelCols].sort((a,b) => a-b);
+  for (let i = 0; i < hi; i++) {
+    const L = M[i] || [];
+    L.forEach((v, j) => {
+      const s = String(v).trim();
+      const dm = s.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/);
+      if (dm && !dataSug) dataSug = dm[1].padStart(2,'0')+'/'+dm[2].padStart(2,'0')+'/'+(dm[3].length === 2 ? '20'+dm[3] : dm[3]);
+      if (typeof v === 'number' && v > 40000 && v < 80000 && !dataSug && !LC.includes(j)) { const t = trfHora(v); if (/^\d{2}\/\d{2}\/\d{4}/.test(t)) dataSug = t.slice(0,10); }
+      if (!LC.includes(j) || typeof v !== 'string' || !/[a-z]{3}/i.test(v)) return;
+      const prox = LC.find(x => x > j); let val = '';
+      for (let k = j+1; k < (prox == null ? j+6 : prox); k++) if (L[k] !== undefined && L[k] !== '') { val = trfHora(L[k]); break; }
+      if (val) info.push({ k: s.replace(/\s+/g,' '), v: val });
+    });
+  }
+  const itens = [], vistos = new Set(); let repetidas = 0, ignoradas = 0, vaz = 0;
+  for (let i = hi+1; i < M.length; i++) {
+    const L = M[i] || [];
+    const nf = String(g(L,'nf')).trim(), md = String(g(L,'md')).trim();
+    if (!nf && !md) { if (L.some(x => x !== '' && x != null)) ignoradas++; if (++vaz > 50) break; continue; }
+    vaz = 0;
+    if (trfNorm(nf) === 'nf' && /md/i.test(md)) continue;                 // cabeçalho repetido
+    const num = k => { const v = g(L,k); if (typeof v === 'number') return v; const s = String(v).replace(/[^\d.,-]/g,''); return s ? parseFloat(s.includes(',') ? s.replace(/\./g,'').replace(',','.') : s) || 0 : 0; };
+    const it = { nf, md, rem: String(g(L,'rem')).trim(), dest: String(g(L,'dest')).trim(), cidade: String(g(L,'cidade')).trim(), vol: num('vol'), peso: Math.round(num('peso')*100)/100, valor: Math.round(num('valor')*100)/100, serv: String(g(L,'serv')).trim(), lin: i+1 };
+    const sig = trfNorm(nf)+'|'+trfNorm(md);
+    if (vistos.has(sig)) { repetidas++; continue; }
+    vistos.add(sig); itens.push(it);
+  }
+  const tot = itens.reduce((t, x) => ({ qt: t.qt+1, vol: t.vol+x.vol, peso: t.peso+x.peso, valor: t.valor+x.valor }), { qt:0, vol:0, peso:0, valor:0 });
+  tot.peso = Math.round(tot.peso*100)/100; tot.valor = Math.round(tot.valor*100)/100;
+  return { itens, info, tot, repetidas, ignoradas, dataSug, colunas: Object.keys(col) };
+}
 
 /* ---------- CONFIGURAÇÕES ---------- */
 function abrirCfg(){
